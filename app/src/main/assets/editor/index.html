@@ -244,14 +244,18 @@
           <p>Нужно подключить Codex к выбранному репозиторию. Ответ может занять несколько минут. Если бот прислал ссылку на облачный чат, открой её из сообщения.</p>
         </div>
         <div id="codex-edit-panel" class="hidden">
-        <p>Codex создаст отдельную ветку и Draft PR. Основная ветка не изменится, пока ты сам не примешь результат.</p>
+        <p>Приложение создаст отдельную ветку и черновик PR. Ответ Codex и опубликованные изменения появятся ниже. Основная ветка изменится после нажатия «Принять и объединить».</p>
         <label>Что изменить в C-коде<textarea id="codex-task" rows="5" placeholder="Например: изменить форму выбранной рамки и добавить скругление…"></textarea></label>
         <div id="codex-context" class="shell-status">Элемент не выбран</div>
         <button id="codex-start" class="wide-action">СОЗДАТЬ ВЕТКУ И ОТПРАВИТЬ @CODEX</button>
         <label>Активный PR<input id="codex-pr" type="number" min="1" placeholder="Номер PR"></label>
+        <div id="codex-edit-status" class="shell-status" role="status" aria-live="polite">Создай запрос или укажи номер существующего PR.</div>
+        <div id="codex-edit-conversation" class="codex-conversation" role="log" aria-live="polite"></div>
+        <button id="codex-edit-open" class="wide-action">ОТКРЫТЬ PR В GITHUB</button>
         <div class="two-actions"><button id="codex-refresh">ПРОВЕРИТЬ</button><button id="codex-compare">СРАВНИТЬ</button></div>
         <button id="codex-followup" class="wide-action">ОТПРАВИТЬ УТОЧНЕНИЕ В ЭТОТ PR</button>
-        <button id="codex-merge" class="wide-action">ПРИНЯТЬ И ОБЪЕДИНИТЬ</button>
+        <button id="codex-merge" class="wide-action" disabled>ПРИНЯТЬ И ОБЪЕДИНИТЬ</button>
+        <button id="codex-edit-load" class="wide-action" disabled>ЗАГРУЗИТЬ РЕЗУЛЬТАТ ПОСЛЕ СЛИЯНИЯ</button>
         <button id="codex-reject" class="wide-action danger">ОТКЛОНИТЬ И УДАЛИТЬ ВЕТКУ</button>
         <pre id="code-diff" class="code-diff"></pre>
         </div>
@@ -302,6 +306,8 @@
   <script src="c-generator.js"></script>
   <script src="editor.js"></script>
   <script src="codex-questions.js"></script>
+<script src="codex-edits.js"></script>
 <script src="app-shell.js"></script>
 </body>
 </html>
+
