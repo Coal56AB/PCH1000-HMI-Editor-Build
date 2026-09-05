@@ -1,0 +1,64 @@
+name: Publish v1.2.2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-v1.2.2.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-v1.2.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the tested APK artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const repo = context.repo;
+            const sourceSha = '9fc3cac139b2b6dca4cf3d449b4a940ec57ece1a';
+            const runId = 33959256992;
+            const artifactId = 9967396604;
+            const run = (await github.rest.actions.getWorkflowRun({...repo, run_id: runId})).data;
+            if (run.conclusion !== 'success' || run.head_sha !== sourceSha) throw new Error('Build is not the tested successful commit');
+            const artifact = (await github.rest.actions.getArtifact({...repo, artifact_id: artifactId})).data;
+            if (artifact.expired || artifact.workflow_run.id !== runId) throw new Error('Wrong or expired artifact');
+            const response = await github.rest.actions.downloadArtifact({...repo, artifact_id: artifactId, archive_format: 'zip'});
+            const data = Buffer.from(response.data);
+            const digest = crypto.createHash('sha256').update(data).digest('hex');
+            if (digest !== '4d9186befb676ebd3220dae3dcb5e6fda0baf2fef07def953caee01b2518a00b') throw new Error('Artifact checksum mismatch');
+            fs.writeFileSync('tested-apk.zip', data);
+      - name: Prepare complete release files
+        run: |
+          mkdir release-files
+          unzip -p tested-apk.zip app-debug.apk > release-files/PCH1000_HMI_Editor_v1.2.2-debug.apk
+          git diff --exit-code 9fc3cac139b2b6dca4cf3d449b4a940ec57ece1a HEAD -- app build.gradle settings.gradle gradle.properties
+          git archive --format=zip HEAD -o release-files/PCH1000_HMI_Editor_Source_v1.2.2_full.zip
+          cd release-files
+          sha256sum *.apk *.zip > SHA256SUMS.txt
+      - name: Publish release for update discovery and download test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ github.sha }}
+        run: |
+          cat > release-notes.md <<'NOTES'
+          Встроен Client ID GitHub. Исправлено ожидание авторизации после сбоя сети; добавлены копирование кода, открытие GitHub и отмена входа.
+
+          APK собран успешным Build APK #5 из коммита 9fc3cac139b2b6dca4cf3d449b4a940ec57ece1a. Тег также содержит сценарий публикации; код приложения не изменён относительно проверенной сборки.
+
+          Важно для проверки обновлений: APK подписан debug-ключом GitHub Actions, отличающимся от ранее выданной локальной 1.2.1. Проверить поиск и скачивание обновления можно, но установить его поверх APK с другим ключом Android не позволит. Постоянный ключ для следующих выпусков ещё не настроен. Не удаляйте прежнее приложение без сохранения своих проектов.
+
+          SHA-256 сертификата этой APK: 555886332d1b0ead9fac84db951f4c3bef6602752adcc20136888cf642c2c655.
+          NOTES
+          gh release create v1.2.2 release-files/* --target "$RELEASE_TARGET" --title 'PCH1000 HMI Editor 1.2.2' --notes-file release-notes.md --latest
