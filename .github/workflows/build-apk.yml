@@ -28,6 +28,8 @@ jobs:
       - run: node --check app/src/main/assets/editor/app-shell.js
       - run: node --check app/src/main/assets/editor/codex-questions.js
       - run: node tests/check_codex_questions.mjs
+      - run: node --check app/src/main/assets/editor/codex-edits.js
+      - run: node tests/check_codex_edit_status.mjs
       - run: node tests/check_codex_edits.mjs
       - run: python3 tests/check_release_version.py
       - run: node tests/check_release_publish.mjs
@@ -105,3 +107,4 @@ jobs:
           script: |
             const publish = require('./scripts/publish_release.cjs');
             await publish({github, context, core});
+
