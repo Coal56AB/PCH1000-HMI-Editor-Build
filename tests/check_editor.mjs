@@ -8,7 +8,7 @@ const shell = read('app/src/main/assets/editor/app-shell.js');
 const manifest = read('app/src/main/AndroidManifest.xml');
 
 const requiredIds = [
-  'mode-toggle', 'export-folder', 'comparison-canvas', 'compare-bar', 'shell-modal',
+  'mode-toggle', 'export-dialog', 'export-confirm', 'comparison-canvas', 'compare-bar', 'shell-modal',
   'choose-folder', 'github-login', 'github-repo', 'codex-start', 'ai-beta', 'tour'
 ];
 for (const id of requiredIds) {

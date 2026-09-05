@@ -135,6 +135,7 @@ public final class MainActivity extends Activity {
                 });
             } catch (Exception error) {
                 showError("Не удалось подготовить ZIP: " + error.getMessage());
+                runOnUiThread(() -> webView.evaluateJavascript("window.HmiEditor && window.HmiEditor.exportFinished(false)", null));
             }
         }
 

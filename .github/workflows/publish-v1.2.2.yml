@@ -1,10 +1,8 @@
+# Historical one-time publication. New versions are published by build-apk.yml.
 name: Publish v1.2.2
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [.github/workflows/publish-v1.2.2.yml]
 
 permissions:
   contents: write

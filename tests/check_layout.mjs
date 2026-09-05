@@ -41,7 +41,7 @@ try {
     await page.waitForTimeout(150);
     await centered(page,dpr);
     await page.locator('#tour:not(.hidden)').waitFor();
-    const targets=['#phone','#hardware','#mode-toggle','#export-folder','#app-menu'];
+    const targets=['#phone','#hardware','#mode-toggle','#export','#app-menu'];
     for(let i=0;i<targets.length;i++) {
       await page.waitForTimeout(120);
       const spot=await rect(page,'#tour-spot'),card=await rect(page,'.tour-card'),target=await rect(page,targets[i]);

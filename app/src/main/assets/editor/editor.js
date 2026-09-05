@@ -12,6 +12,7 @@ var frame=$('#renderer'),phone=$('#phone'),stage=$('#stage'),interaction=$('#int
 var sceneSelect=$('#scene'),scopeSelect=$('#scope');
 var project={format:'pch1000-hmi-editor',version:1,name:'ПЧ-1000 HMI',created:new Date().toISOString(),global:{},scenes:{}};
 var currentScene='home-ready',selectedKey='',selectedEl=null,baselines=new Map(),undo=[],redo=[],gesture=null,loading=false,mode='view',lastRuntimeScene='';
+var exportBuilding=false,exportPending=false,rendererReloading=false;
 var comparison={before:null,after:null,diff:null,candidate:null,changed:0};
 var STYLE_PROPS=['transform','transform-origin','color','background-color','border-color','stroke','fill','font-size','font-weight'];
 
@@ -167,15 +168,21 @@ encoderPush.addEventListener('pointerup',function(e){releaseEncoder(e,false)});e
 
 function readAsset(path){try{return window.AndroidEditor?AndroidEditor.readAsset(path):''}catch(e){return''}}
 async function collectScenes(){
-  var result=[];loading=true;$('#busy').classList.remove('hidden');
+  var result=[];
   for(var i=0;i<SCENES.length;i++){
     $('#busy-state').textContent=(i+1)+' / '+SCENES.length+' · '+SCENES[i][1];await applyScene(SCENES[i][0]);
     var r=win().CStripPreview;r.commandCache=new WeakMap();r.build();result.push({name:SCENES[i][0],commands:JSON.parse(JSON.stringify(r.commands))});await new Promise(function(resolve){setTimeout(resolve,0)});
   }
-  loading=false;return result;
+  return result;
 }
 async function buildExportEntries(){
-    var scenes=await collectScenes(),generated=CSceneGenerator.generate(scenes),projectText=JSON.stringify(project,null,2),root='PCH1000_HMI_C_Renderer_edited/',entries=[
+  if(exportBuilding||exportPending||loading||rendererReloading)throw new Error('Дождись завершения текущей операции');
+  if(!win().CStripPreview||!win().CStripPreview.ready)throw new Error('Симулятор ещё загружается');
+  exportBuilding=true;loading=true;$('#busy').classList.remove('hidden');
+  try{
+    var scenes=await collectScenes();
+    $('#busy-state').textContent='Формирую C-файлы…';await nextFrame();
+    var generated=CSceneGenerator.generate(scenes),projectText=JSON.stringify(project,null,2),root='PCH1000_HMI_C_Renderer_edited/',entries=[
       {path:'PCH1000_HMI_editor_project.json',content:projectText},
       {path:root+'src/hmi_scene_generated.c',content:generated.source},
       {path:root+'include/hmi_scene_generated.h',content:generated.header}
@@ -183,6 +190,11 @@ async function buildExportEntries(){
     ['AGENTS.md','Makefile','README.md','TEST_RESULTS.md','examples/host_preview.c','examples/stm32_display_backend_example.c','reference/EXPORT.md','reference/SCENE_FORMAT.md','include/hmi.h','include/hmi_backend.h','include/hmi_gfx.h','include/hmi_state.h','src/hmi_gfx.c','src/hmi_scene.c','src/hmi_dirty.c','src/hmi_dynamic.c','src/font_data.inc'].forEach(function(path){var text=readAsset('template/'+path);if(text)entries.push({path:path==='AGENTS.md'?'AGENTS.md':root+path,content:text})});
     entries.push({path:'README_EDITED.txt',content:'ПЧ-1000 HMI Editor\n\nСгенерировано: '+new Date().toISOString()+'\nСцен: '+generated.stats.scenes+'\nУникальных примитивов: '+generated.stats.primitives+'\nОбщих блоков: '+generated.stats.blocks+'\nДанные сцен: '+generated.stats.bytes+' байт\n\nКаталог PCH1000_HMI_C_Renderer_edited содержит полный отредактированный C99 RGB565-рендерер в структуре исходного архива. Проект повторного редактирования находится в PCH1000_HMI_editor_project.json.\n'});
     return{entries:entries,projectText:projectText};
+  }finally{
+    // Every caller owns only the generated files, never this progress overlay.
+    // qaApplyScenario disables live simulation; recreate the live renderer here.
+    try{reloadLiveRenderer()}finally{exportBuilding=false;loading=false;$('#busy').classList.add('hidden')}
+  }
 }
 async function captureProjectFrame(projectVersion){
   var active=project,canvas=win().document.getElementById('pixel-preview');
@@ -220,22 +232,46 @@ async function startComparison(candidateText){
 }
 function closeComparison(){document.body.classList.remove('comparing');$('#compare-bar').classList.add('hidden');$('#comparison-canvas').classList.add('hidden');requestAnimationFrame(fit)}
 function acceptComparisonCandidate(){if(!comparison.candidate)return false;snapshot();project=comparison.candidate;save();restoreEditorChanges();applyOverrides();closeComparison();return true}
-async function doExport(){
+function workingExportFolder(){try{return window.AndroidEditor?JSON.parse(AndroidEditor.workingFolderInfo()):{}}catch(e){return{}}}
+function updateExportDestination(){
+  var info=workingExportFolder(),working=$('#export-destination').value==='working';
+  $('#export-location').textContent=working?(info.uri?'Рабочая папка: '+(info.name||'выбрана'):'Сначала выбери рабочую папку в меню «Проект».'):'Android предложит выбрать, куда сохранить ZIP-файл.';
+  $('#export-confirm').disabled=working&&!info.uri;
+  $('#export-choose-folder').classList.toggle('hidden',!working||!!info.uri);
+}
+function openExportDialog(destination){
+  if(exportBuilding||exportPending||rendererReloading){toast('Дождись завершения текущей операции');return}
+  $('#export-destination').value=destination||'working';updateExportDestination();
+  $('#export-dialog').classList.remove('hidden');$('#export-cancel').focus();
+}
+function closeExportDialog(){$('#export-dialog').classList.add('hidden')}
+function openProject(){if(window.AndroidEditor)AndroidEditor.pickProject();else toast('Импорт файла доступен в APK')}
+async function confirmExport(){
+  var destination=$('#export-destination').value,bridge=window.AndroidEditor;
+  if($('#export-dialog').classList.contains('hidden')||exportBuilding||exportPending)return;
+  if(!bridge){toast('Экспорт C-проекта доступен в APK');return}
+  if(destination==='working'&&!workingExportFolder().uri){updateExportDestination();return}
+  closeExportDialog();
   try{
     var payload=await buildExportEntries();
-    if(window.AndroidEditor)AndroidEditor.saveExport(JSON.stringify({entries:payload.entries}));else{var blob=new Blob([payload.projectText],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='PCH1000_HMI_editor_project.json';a.click();exportFinished(true)}
-  }catch(e){loading=false;$('#busy').classList.add('hidden');toast('Ошибка экспорта: '+e.message)}
+    exportPending=true;
+    if(destination==='working'){toast('Сохраняю файлы в рабочую папку…');bridge.saveWorkingProject(JSON.stringify({entries:payload.entries}))}
+    else bridge.saveExport(JSON.stringify({entries:payload.entries}));
+  }catch(e){exportPending=false;toast('Ошибка экспорта: '+e.message)}
 }
-async function doFolderExport(){try{var payload=await buildExportEntries();if(window.AndroidEditor&&AndroidEditor.saveExportFolder)AndroidEditor.saveExportFolder(JSON.stringify({entries:payload.entries}));else throw new Error('выбор папки доступен только в APK')}catch(e){loading=false;$('#busy').classList.add('hidden');toast('Ошибка экспорта: '+e.message)}}
-$('#export').onclick=doExport;$('#export-folder').onclick=doFolderExport;$('#import').onclick=function(){if(window.AndroidEditor)AndroidEditor.pickProject();else toast('Импорт файла доступен в APK')};
+$('#export').onclick=function(){openExportDialog()};
+$('#export-destination').onchange=updateExportDestination;
+$('#export-confirm').onclick=confirmExport;$('#export-cancel').onclick=closeExportDialog;
+$('#export-dialog').addEventListener('click',function(e){if(e.target===this)closeExportDialog()});
+$('#export-choose-folder').onclick=function(){closeExportDialog();if(window.AppShell)AppShell.open('project')};
 $$('[data-compare]').forEach(function(b){b.onclick=function(){showComparison(b.dataset.compare)}});$('#compare-close').onclick=closeComparison;
 function importProject(text){try{var p=JSON.parse(text);if(p.format!=='pch1000-hmi-editor')throw new Error('неверный формат');snapshot();project=p;save();restoreEditorChanges();applyOverrides();updateSelection();toast('Проект загружен')}catch(e){toast('Не удалось открыть проект: '+e.message)}}
-function reloadLiveRenderer(){selectedKey='';selectedEl=null;baselines=new Map();lastRuntimeScene='';frame.src='renderer.html?embed=1&live=1'}
-function exportFinished(ok){loading=false;$('#busy').classList.add('hidden');reloadLiveRenderer();if(ok)toast('C-файлы и проект сохранены')}
-function exportFolderFinished(ok,message){loading=false;$('#busy').classList.add('hidden');reloadLiveRenderer();if(ok)toast(message||'C-файлы экспортированы в папку');else if(message)toast(message)}
-function onBack(){if(!selection.classList.contains('hidden')){selectedKey='';selectedEl=null;updateSelection();return true}if(mode==='edit'){setMode('view');return true}return false}
+function reloadLiveRenderer(){rendererReloading=true;selectedKey='';selectedEl=null;baselines=new Map();lastRuntimeScene='';frame.src='renderer.html?embed=1&live=1'}
+function exportFinished(ok){exportPending=false;if(ok)toast('C-файлы и проект сохранены');else toast('Экспорт отменён или не удалось сохранить ZIP')}
+function exportFolderFinished(ok,message){exportPending=false;toast(message||(ok?'C-файлы и проект сохранены':'Экспорт отменён'))}
+function onBack(){if(!$('#export-dialog').classList.contains('hidden')){closeExportDialog();return true}if(!selection.classList.contains('hidden')){selectedKey='';selectedEl=null;updateSelection();return true}if(mode==='edit'){setMode('view');return true}return false}
 window.HmiEditor={
-  importProject:importProject,exportFinished:exportFinished,exportFolderFinished:exportFolderFinished,onBack:onBack,
+  openExportDialog:openExportDialog,openProject:openProject,importProject:importProject,exportFinished:exportFinished,exportFolderFinished:exportFolderFinished,onBack:onBack,
   getProject:function(){return JSON.stringify(project)},buildExportEntries:buildExportEntries,startComparison:startComparison,
   closeComparison:closeComparison,acceptComparisonCandidate:acceptComparisonCandidate,
   selectedContext:function(){return{key:selectedKey,name:selectedEl?niceName(selectedEl,selectedKey):'',scene:currentScene,sceneName:sceneLabel(currentScene)}}
@@ -247,7 +283,7 @@ function initializeRenderer(){
   function ready(){
     if(!win().CStripPreview||!win().CStripPreview.ready||!win().qaApplyScenario||!win().qaCurrentScenario)return false;
     try{var stored=JSON.parse(localStorage.getItem('pch1000-hmi-editor-project-v1')||'null');if(stored&&stored.format===project.format)project=stored}catch(e){}
-    syncRuntimeScene(true);fit();save();return true;
+    rendererReloading=false;syncRuntimeScene(true);fit();save();return true;
   }
   if(!ready())rendererReadyTimer=setInterval(function(){if(ready())clearInterval(rendererReadyTimer)},80);
 }

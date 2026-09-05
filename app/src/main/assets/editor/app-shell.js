@@ -19,10 +19,10 @@ $$('[data-shell-tab]').forEach(function(b){b.onclick=function(){selectTab(b.data
 
 function refreshFolder(){var b=bridge(),info={};try{info=b&&b.workingFolderInfo?parse(b.workingFolderInfo()):{}}catch(e){}$('#folder-status').textContent=info.name?'Рабочая папка: '+info.name:'Сейчас используется встроенный шаблон'}
 $('#choose-folder').onclick=function(){var b=bridge();if(b&&b.chooseWorkingFolder)b.chooseWorkingFolder();else setMessage('Выбор папки доступен только в APK',true)};
-$('#save-folder').onclick=async function(){try{setMessage('Собираю полный C-проект…');var payload=await HmiEditor.buildExportEntries();var b=bridge();if(!b||!b.saveWorkingProject)throw new Error('Сначала выбери рабочую папку');b.saveWorkingProject(JSON.stringify({entries:payload.entries}));setMessage('Запись файлов запущена')}catch(e){setMessage(e.message,true)}};
-$('#open-import').onclick=function(){$('#import').click();close()};
-function workingFolderSelected(hasProject,json,name){refreshFolder();if(hasProject&&json)HmiEditor.importProject(json);else setMessage('Папка выбрана. Нажми «Сохранить C-проект», чтобы развернуть в неё шаблон.')}
-function workingProjectSaved(ok,text){setMessage(text,!ok)}
+$('#save-folder').onclick=function(){close();HmiEditor.openExportDialog('working')};
+$('#open-import').onclick=function(){HmiEditor.openProject();close()};
+function workingFolderSelected(hasProject,json,name){refreshFolder();if(hasProject&&json)HmiEditor.importProject(json);else setMessage('Папка выбрана. Нажми «Экспорт», чтобы развернуть в неё шаблон.')}
+function workingProjectSaved(ok,text){HmiEditor.exportFolderFinished(ok,text);setMessage(text,!ok)}
 function projectChanged(json){clearTimeout(saveTimer);saveTimer=setTimeout(function(){var b=bridge();if(b&&b.autoSaveProject)b.autoSaveProject(json)},800)}
 
 function hasToken(){var b=bridge();try{return !!(b&&b.hasGithubToken&&b.hasGithubToken())}catch(e){return false}}
@@ -90,7 +90,11 @@ async function pushEntries(repo,branch,entries,messageText){
   var createdCommit=await api('POST','/repos/'+repo+'/git/commits',{message:messageText||'Update PCH-1000 HMI',tree:createdTree.sha,parents:[parent]});
   await api('PATCH','/repos/'+repo+'/git/refs/heads/'+encodeURIComponent(branch),{sha:createdCommit.sha,force:false});return createdCommit;
 }
-$('#github-push').onclick=async function(){try{if(!state.repo)throw new Error('Выбери репозиторий');setMessage('Собираю C-проект…');var payload=await HmiEditor.buildExportEntries();await pushEntries(state.repo,state.branch,payload.entries,$('#github-message').value.trim());setMessage('Commit и push выполнены')}catch(e){setMessage(e.message,true)}};
+$('#github-push').onclick=async function(){
+  var button=$('#github-push');if(button.disabled)return;button.disabled=true;
+  try{if(!state.repo)throw new Error('Выбери репозиторий');setMessage('Собираю C-проект…');var payload=await HmiEditor.buildExportEntries();await pushEntries(state.repo,state.branch,payload.entries,$('#github-message').value.trim());setMessage('Commit и push выполнены')}
+  catch(e){setMessage(e.message,true)}finally{button.disabled=false}
+};
 $('#create-branch').onclick=async function(){try{var name=$('#new-branch-name').value.trim();if(!name)throw new Error('Укажи название ветки');if(!/^[A-Za-z0-9._\/-]+$/.test(name)||name.indexOf('..')>=0)throw new Error('Недопустимое название ветки');await createBranch(state.repo,state.branch,name);state.branch=name;saveRepoState();await loadBranches();$('#github-branch').value=name;setMessage('Ветка '+name+' создана и выбрана')}catch(e){setMessage(e.message,true)}};
 $('#github-history').onclick=async function(){try{var commits=await api('GET','/repos/'+state.repo+'/commits?sha='+encodeURIComponent(state.branch)+'&per_page=20');$('#commit-history').textContent=commits.map(function(c){return c.sha.slice(0,7)+' · '+c.commit.author.date.slice(0,10)+'\n'+c.commit.message.split('\n')[0]}).join('\n\n');setMessage('Последние commit: '+commits.length)}catch(e){setMessage(e.message,true)}};
 $('#create-repo').onclick=async function(){try{var name=$('#new-repo-name').value.trim();if(!name)throw new Error('Укажи название');setMessage('Создаю репозиторий…');var repo=await api('POST','/user/repos',{name:name,private:$('#new-repo-private').checked,auto_init:true,description:'C-код интерфейса экранчика ПЧ-1000'});state.repo=repo.full_name;await loadGithub();$('#github-repo').value=state.repo;state.branch=repo.default_branch||'main';saveRepoState();await loadBranches();setMessage('Репозиторий создан')}catch(e){setMessage(e.message,true)}};
@@ -124,7 +128,7 @@ var tourSteps=[
   {target:'#phone',title:'Живой экран',text:'Это симуляция настоящего экранчика 320×480. Меню, графики и окна можно нажимать.'},
   {target:'#hardware',title:'Кнопки и энкодер',text:'Здесь проверяются заряд, пуск и управление энкодером. Удержание энкодера 0,5 секунды переключает параметр.'},
   {target:'#mode-toggle',title:'Ручное редактирование',text:'Кнопка «Редактор» включает выбор элементов, перемещение по пикселям, текст, шрифт и цвета.',action:function(){$('#mode-toggle').click()}},
-  {target:'#export-folder',title:'Настоящий C-проект',text:'Сохраняй полный набор C-файлов в выбранную папку. Этот код затем встраивается в микроконтроллер.'},
+  {target:'#export',title:'Настоящий C-проект',text:'Сохраняй полный набор C-файлов в выбранную папку. Этот код затем встраивается в микроконтроллер.'},
   {target:'#app-menu',title:'Проекты и GitHub',text:'В меню выбирается рабочая папка или GitHub. Там же находятся обновления и необязательный Codex-бета.',action:function(){open('project')}}
 ],tourAt=0;
 var tourLayoutFrame=0;

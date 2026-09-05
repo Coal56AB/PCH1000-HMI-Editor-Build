@@ -17,9 +17,7 @@
     <button id="undo" class="edit-only" title="Отменить">↶</button>
     <button id="redo" class="edit-only" title="Повторить">↷</button>
     <button id="grid" class="edit-only active" title="Привязка к сетке">#</button>
-    <button id="import" title="Импорт проекта">ОТКР.</button>
-    <button id="export">C + JSON</button>
-    <button id="export-folder" title="Экспорт C-проекта в выбранную папку">C В ПАПКУ</button>
+    <button id="export">ЭКСПОРТ</button>
     <span id="scale-badge" class="scale-badge">×1</span>
   </header>
 
@@ -119,6 +117,18 @@
   </section>
 
   <div id="toast" class="toast"></div>
+  <div id="export-dialog" class="export-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <section class="export-card">
+      <h2 id="export-title">Экспорт</h2>
+      <p>Сохранить C-файлы для микроконтроллера и проект настроек? Генерация всех сцен займёт некоторое время.</p>
+      <label for="export-destination">Куда сохранить</label>
+      <select id="export-destination"><option value="working">В рабочую папку</option><option value="zip">В ZIP-файл</option></select>
+      <p id="export-location"></p>
+      <p>Файлы проекта с совпадающими именами будут заменены.</p>
+      <button id="export-choose-folder" class="hidden">ВЫБРАТЬ ПАПКУ В МЕНЮ</button>
+      <div class="two-actions"><button id="export-cancel">ОТМЕНА</button><button id="export-confirm" class="primary">ЭКСПОРТИРОВАТЬ</button></div>
+    </section>
+  </div>
   <div id="busy" class="busy hidden"><div class="spinner"></div><strong>Собираю 47 сцен и C-файлы…</strong><small id="busy-state"></small></div>
 
   <nav id="compare-bar" class="compare-bar hidden" aria-label="Сравнение рендеров">
@@ -142,7 +152,7 @@
         <p class="shell-about">Приложение для просмотра, проверки и редактирования интерфейса экранчика ПЧ-1000. На выходе получается C-код для встраивания в микроконтроллер, который будет отрисовывать интерфейс на реальном дисплее.</p>
         <div class="shell-status" id="folder-status">Сейчас используется встроенный шаблон</div>
         <button id="choose-folder" class="wide-action">ВЫБРАТЬ РАБОЧУЮ ПАПКУ</button>
-        <button id="save-folder" class="wide-action">СОХРАНИТЬ C-ПРОЕКТ В ПАПКУ</button>
+        <button id="save-folder" class="wide-action">ЭКСПОРТ</button>
         <button id="open-import" class="wide-action">ОТКРЫТЬ JSON ИЛИ ZIP</button>
       </div>
 

@@ -6,6 +6,10 @@ on:
     branches: [ main ]
   pull_request:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,13 +26,77 @@ jobs:
       - run: node --check app/src/main/assets/editor/app-shell.js
       - run: node tests/check_editor.mjs
       - run: node tests/check_geometry.mjs
+      - run: node tests/check_export.mjs
       - run: node tests/check_github_auth.mjs
       - name: Test GitHub device authorization recovery
         run: |
           javac -encoding UTF-8 -d /tmp/pch-auth-tests app/src/main/java/com/pch1000/hmieditor/GitHubDevicePoller.java tests/GitHubDevicePollerTest.java
           java -cp /tmp/pch-auth-tests com.pch1000.hmieditor.GitHubDevicePollerTest
       - run: gradle assembleDebug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: PCH1000-HMI-Editor-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+  release:
+    name: Publish current APK and complete sources
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: pch1000-publish-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download APK from this successful build
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const result = await github.rest.actions.listWorkflowRunArtifacts({...context.repo, run_id: context.runId});
+            const artifact = result.data.artifacts.find(a => a.name === 'PCH1000-HMI-Editor-debug');
+            if (!artifact || artifact.expired) throw new Error('APK artifact missing');
+            const response = await github.rest.actions.downloadArtifact({...context.repo, artifact_id: artifact.id, archive_format: 'zip'});
+            fs.writeFileSync('built-apk.zip', Buffer.from(response.data));
+      - name: Prepare release
+        run: |
+          python3 - <<'PYCODE'
+          import re, pathlib
+          text = pathlib.Path('app/build.gradle').read_text()
+          version = re.search(r"versionName '([0-9]+[.][0-9]+[.][0-9]+)'", text).group(1)
+          pathlib.Path('release-version.txt').write_text(version)
+          PYCODE
+          version="$(cat release-version.txt)"
+          mkdir release-files
+          unzip -p built-apk.zip app-debug.apk > "release-files/PCH1000_HMI_Editor_v${version}-debug.apk"
+          test -s "release-files/PCH1000_HMI_Editor_v${version}-debug.apk"
+          git archive --format=zip HEAD -o "release-files/PCH1000_HMI_Editor_v${version}_full.zip"
+          cd release-files
+          sha256sum *.apk *.zip > SHA256SUMS.txt
+      - name: Publish a new version once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ github.sha }}
+        run: |
+          version="$(cat release-version.txt)"
+          tag="v${version}"
+          if gh release view "$tag" --json isDraft --jq .isDraft > existing-release.txt; then
+            if test "$(cat existing-release.txt)" = false; then
+              echo "This version is already published; its APK will not be replaced."
+              exit 0
+            fi
+            echo "An unfinished draft already exists. Inspect it before publishing."
+            exit 1
+          fi
+          cat > release-notes.md <<'NOTES'
+          Исправлено зависшее окно генерации после GitHub push и ошибок экспорта.
+          На верхней панели одна кнопка «Экспорт»: рабочая папка или ZIP, с подтверждением до генерации. Кнопка «Откр.» убрана с верхней панели; рабочая папка и импорт доступны в меню проекта.
+
+          APK и полный архив исходников взяты из одного успешного запуска сборки.
+          Эта сборка пока использует автоматически созданный debug-ключ. Установка поверх APK с другой подписью не поддерживается; постоянный ключ подписи для дальнейших автообновлений ещё требуется настроить. Сохраните свои проекты перед сменой установки.
+          NOTES
+          gh release create "$tag" release-files/* --target "$RELEASE_TARGET" --title "PCH1000 HMI Editor $version" --notes-file release-notes.md --draft
+          gh release edit "$tag" --draft=false --latest
