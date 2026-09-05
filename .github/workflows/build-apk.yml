@@ -24,6 +24,9 @@ jobs:
           gradle-version: '8.9'
       - run: node --check app/src/main/assets/editor/editor.js
       - run: node --check app/src/main/assets/editor/app-shell.js
+      - run: node --check app/src/main/assets/editor/codex-questions.js
+      - run: node tests/check_codex_questions.mjs
+      - run: node tests/check_live_overrides.mjs
       - run: node tests/check_editor.mjs
       - run: node tests/check_geometry.mjs
       - run: node tests/check_export.mjs
@@ -114,12 +117,11 @@ jobs:
             exit 1
           fi
           cat > release-notes.md <<'NOTES'
-          Настроена постоянная подпись APK. Новые релизы используют один сохранённый ключ; отсутствие или подмена ключа останавливают сборку и публикацию.
+          Добавлен режим «Спросить»: вопросы по C-коду через обсуждение GitHub, продолжение диалога и просмотр сообщений внутри приложения. Режим доступен при включённой Codex-бета и настроенном подключении Codex к репозиторию пользователя.
 
-          После перехода на эту версию последующие обновления устанавливаются поверх неё через кнопку обновления приложения, с подтверждением Android и сохранением данных.
-          Переход с прежних debug-сборок однократный: их ключи не были сохранены, поэтому Android не позволит установить эту версию поверх них. Сохраните проекты перед переустановкой.
+          Исправлено исчезновение смещения текста после обновления симулятора. Правки применяются перед каждым кадром и при формировании команд для экспорта.
 
-          APK и полные исходники относятся к одному коммиту. Закрытый ключ в исходники и релиз не включён.
+          Подпись сохранена от версии 1.2.4: эту версию можно установить поверх 1.2.4 без удаления приложения. APK и полные исходники относятся к одному коммиту.
           NOTES
           gh release create "$tag" release-files/* --target "$RELEASE_TARGET" --title "PCH1000 HMI Editor $version" --notes-file release-notes.md --draft
           gh release edit "$tag" --draft=false --latest

@@ -206,6 +206,22 @@
       </div>
 
       <div class="shell-pane" data-shell-pane="codex">
+        <label>Режим<select id="codex-mode"><option value="ask">Спросить</option><option value="edit">Изменить C-код</option></select></label>
+        <div id="codex-ask-panel">
+          <p>Задай вопрос по исходникам. Вопрос и ответ сохраняются в обсуждении GitHub. Codex получает указание только объяснить код, без правок.</p>
+          <label>Вопрос<textarea id="codex-question" rows="4" placeholder="Где задаются названия вкладок графиков: в HMI или они приходят от контроллера?"></textarea></label>
+          <button id="codex-ask-send" class="wide-action">СПРОСИТЬ</button>
+          <div class="two-actions"><button id="codex-ask-new">НОВЫЙ ДИАЛОГ</button><button id="codex-ask-refresh">ОБНОВИТЬ ОТВЕТЫ</button></div>
+          <div id="codex-ask-status" class="shell-status" role="status"></div>
+          <div id="codex-conversation" class="codex-conversation" role="log" aria-live="polite"></div>
+          <button id="codex-ask-open" class="wide-action">ОТКРЫТЬ ОБСУЖДЕНИЕ В GITHUB</button>
+          <details><summary>Открыть существующее обсуждение</summary>
+            <label>Номер Issue или PR<input id="codex-thread" type="number" min="1" step="1"></label>
+            <button id="codex-thread-load">ОТКРЫТЬ ПЕРЕПИСКУ</button>
+          </details>
+          <p>Нужно подключить Codex к выбранному репозиторию. Ответ может занять несколько минут. Если бот прислал ссылку на облачный чат, открой её из сообщения.</p>
+        </div>
+        <div id="codex-edit-panel" class="hidden">
         <p>Codex создаст отдельную ветку и Draft PR. Основная ветка не изменится, пока ты сам не примешь результат.</p>
         <label>Что изменить в C-коде<textarea id="codex-task" rows="5" placeholder="Например: изменить форму выбранной рамки и добавить скругление…"></textarea></label>
         <div id="codex-context" class="shell-status">Элемент не выбран</div>
@@ -216,10 +232,11 @@
         <button id="codex-merge" class="wide-action">ПРИНЯТЬ И ОБЪЕДИНИТЬ</button>
         <button id="codex-reject" class="wide-action danger">ОТКЛОНИТЬ И УДАЛИТЬ ВЕТКУ</button>
         <pre id="code-diff" class="code-diff"></pre>
+        </div>
       </div>
 
       <div class="shell-pane" data-shell-pane="settings">
-        <label class="shell-check"><input id="ai-beta" type="checkbox"> Изменения через Codex — БЕТА</label>
+        <label class="shell-check"><input id="ai-beta" type="checkbox"> Вопросы и изменения через Codex — БЕТА</label>
         <p>При выключенной галочке функции ИИ скрыты и ничего в Codex не отправляется.</p>
         <button id="restart-tour" class="wide-action">ПОКАЗАТЬ ОБУЧЕНИЕ ЕЩЁ РАЗ</button>
         <div class="shell-status" id="app-version"></div>
@@ -240,6 +257,7 @@
   </div>
   <script src="c-generator.js"></script>
   <script src="editor.js"></script>
-  <script src="app-shell.js"></script>
+  <script src="codex-questions.js"></script>
+<script src="app-shell.js"></script>
 </body>
 </html>

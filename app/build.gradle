@@ -38,8 +38,8 @@ android {
         applicationId 'com.pch1000.hmieditor'
         minSdk 26
         targetSdk 35
-        versionCode 7
-        versionName '1.2.4'
+        versionCode 8
+        versionName '1.2.5'
         // Public app identifier, never a token or client secret.
         def oauthClientId = providers.gradleProperty('githubOAuthClientId').orElse(providers.environmentVariable('GITHUB_OAUTH_CLIENT_ID')).getOrElse('Ov23liZhW4JlhvBxx6zs')
         if (!(oauthClientId ==~ /[A-Za-z0-9.\-]*/)) {

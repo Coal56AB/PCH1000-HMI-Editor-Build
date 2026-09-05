@@ -20,3 +20,9 @@ body.tour-active .properties{bottom:var(--tour-reserve,180px);max-height:calc(10
 .shell-pane details p{margin-top:10px}
 .shell-card>header,.shell-tabs,#shell-message{flex-shrink:0}
 @media (orientation:landscape){body.tour-active .hardware{bottom:var(--tour-reserve,180px)}}
+
+.codex-conversation{max-height:45dvh;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain}
+.codex-message{padding:10px;margin:8px 0;border:1px solid #40535b;border-radius:6px;background:#0c181e}
+.codex-message header{font-size:10px;color:var(--green);margin-bottom:6px}
+.codex-message pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 sans-serif;color:#dce2e4}
+.codex-message a{display:block;margin-top:7px;color:#69b8ed;font-size:11px;overflow-wrap:anywhere}
