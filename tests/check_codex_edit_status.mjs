@@ -6,7 +6,7 @@ const markdown=fs.readFileSync(new URL('../app/src/main/assets/editor/codex-mark
 const source=fs.readFileSync(new URL('../app/src/main/assets/editor/codex-edits.js',import.meta.url),'utf8');
 const clone=value=>JSON.parse(JSON.stringify(value));
 
-function fixture({withAnswer=false,withPr=false,merged=false,taskFile=false,loadError=false}={}){
+function fixture({withAnswer=false,withPr=false,merged=false,taskFile=false,loadError=false,prFirst=false}={}){
   const nodes=new Map(),stored=new Map(),calls=[],opened=[],imports=[];let tick,enabled=true,gate=null;
   let context={repo:'owner/project',branch:'main'};
   const issue={id:9,number:9,state:'open',title:'HMI: вкладки',body:'Изменить вкладки',user:{login:'owner'},created_at:'2026-09-05T10:00:00Z'};
@@ -14,13 +14,13 @@ function fixture({withAnswer=false,withPr=false,merged=false,taskFile=false,load
   if(withAnswer)comments.push({id:2,user:{login:'chatgpt-codex-connector[bot]'},body:'# Готово\n\n**Diff подготовлен.** https://chatgpt.com/codex/tasks/abc\n\n<script>bad()</script>',created_at:'2026-09-05T10:01:00Z'});
   const pr={id:4,number:4,node_id:'PR_node',html_url:'https://github.com/owner/project/pull/4',state:merged?'closed':'open',draft:false,merged,mergeable:true,merge_commit_sha:merged?'merge-sha':null,body:'Resolves #9',user:{login:'owner'},head:{sha:'head1',ref:'codex/ispravit-vkladki-a1b2c3d4',repo:{full_name:'owner/project'}},base:{sha:'base1',ref:'main'}};
   const files=[{filename:'src/hmi.c',additions:3,deletions:1,patch:'@@ code'}];if(taskFile)files.unshift({filename:'.codex/tasks/hmi-old.md',additions:1,deletions:0});
-  stored.set('pch-codex-edit-selection:owner/project',JSON.stringify({issue:9,pr:withPr?4:0,requestedBranch:'codex/ispravit-vkladki-a1b2c3d4',base:'main'}));
+  stored.set('pch-codex-edit-selection:owner/project',JSON.stringify({issue:prFirst?0:9,pr:withPr?4:0,requestedBranch:'codex/ispravit-vkladki-a1b2c3d4',base:'main'}));
   function node(tag='div'){let own='';const classes=new Set();return{tagName:String(tag).toUpperCase(),value:'',style:{},dataset:{},disabled:false,children:[],scrollHeight:10,clientHeight:10,scrollTop:0,className:'',classList:{contains:name=>classes.has(name),toggle(name,on){if(on)classes.add(name);else classes.delete(name)},add:name=>classes.add(name),remove:name=>classes.delete(name)},appendChild(child){this.children.push(child)},closest(){return{classList:{contains:()=>true}}},set textContent(value){own=String(value);if(value==='')this.children=[]},get textContent(){return own+this.children.map(child=>child.textContent||'').join('')}}}
   const $=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id)};$('codex-mode').value='edit';
   async function api(method,path,body){
     calls.push({method,path,body});if(gate)await gate;
     if(method==='GET'&&path==='/repos/owner/project/issues/9')return clone(issue);
-    if(method==='GET'&&path.includes('/issues/9/comments?'))return path.endsWith('page=1')?clone(comments):[];
+    if(method==='GET'&&(path.includes('/issues/9/comments?')||path.includes('/issues/4/comments?')))return path.endsWith('page=1')?clone(comments):[];
     if(method==='GET'&&path.includes('/issues/9/timeline?'))return[];
     if(method==='GET'&&path.includes('/pulls?state=all'))return withPr?[clone(pr)]:[];
     if(method==='GET'&&path==='/repos/owner/project/pulls/4')return clone(pr);
@@ -44,9 +44,14 @@ function fixture({withAnswer=false,withPr=false,merged=false,taskFile=false,load
 }
 
 {
+  const f=fixture({withPr:true,taskFile:true,prFirst:true});await f.app.refresh();assert.match(f.$('codex-edit-status').textContent,/обрабатывает/);assert.equal(f.$('codex-merge').disabled,true);
+  f.comments.push({id:2,user:{login:'chatgpt-codex-connector[bot]'},body:'# Готово\n\n**Изменения опубликованы.**'});await f.app.refresh();assert.match(f.$('codex-edit-status').textContent,/Codex закончил/);assert.equal(f.$('codex-merge').disabled,false);
+}
+
+{
   const f=fixture();await f.app.refresh();assert.match(f.$('codex-edit-status').textContent,/ещё работает/);assert.equal(f.$('codex-result-actions').classList.contains('hidden'),true);
   f.comments.push({id:2,user:{login:'chatgpt-codex-connector[bot]'},body:'# Готово\n\n**Diff подготовлен.** https://chatgpt.com/codex/tasks/abc\n<script>bad()</script>'});await f.app.refresh();
-  assert.match(f.$('codex-edit-status').textContent,/Open pull request/);const body=f.$('codex-edit-conversation').children.at(-1).children[1];assert.equal(body.children[0].tagName,'H3');assert(body.textContent.includes('<script>bad()</script>'));
+  assert.match(f.$('codex-edit-status').textContent,/Codex ответил/);const body=f.$('codex-edit-conversation').children.at(-1).children[1];assert.equal(body.children[0].tagName,'H3');assert(body.textContent.includes('<script>bad()</script>'));
   await f.click('codex-edit-open');assert.equal(f.opened[0],'https://chatgpt.com/codex/tasks/abc');
 }
 {
