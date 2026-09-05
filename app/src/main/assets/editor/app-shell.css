@@ -26,3 +26,10 @@ body.tour-active .properties{bottom:var(--tour-reserve,180px);max-height:calc(10
 .codex-message header{font-size:10px;color:var(--green);margin-bottom:6px}
 .codex-message pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 sans-serif;color:#dce2e4}
 .codex-message a{display:block;margin-top:7px;color:#69b8ed;font-size:11px;overflow-wrap:anywhere}
+
+.shell-pane .ai-help{padding:0}
+.ai-help summary{min-height:44px;padding:12px;cursor:pointer;line-height:20px}
+.ai-help [data-ai-help]{padding:0 12px 12px;overflow-wrap:anywhere}
+.ai-help code,.ai-help-example{user-select:text;-webkit-user-select:text}
+.shell-pane .ai-help-link{min-height:44px;text-align:left;color:#69b8ed;white-space:normal;overflow-wrap:anywhere}
+.ai-help-example{margin:8px 0;padding:9px;border:1px solid #40535b;border-radius:6px;background:#071014;color:#dce2e4;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 monospace}

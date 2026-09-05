@@ -144,7 +144,7 @@
       <div class="shell-tabs">
         <button data-shell-tab="project" class="active">ПРОЕКТ</button>
         <button data-shell-tab="github">GITHUB</button>
-        <button data-shell-tab="codex" class="ai-tab hidden">CODEX</button>
+        <button data-shell-tab="codex" class="ai-tab hidden">ИИ</button>
         <button data-shell-tab="settings">НАСТРОЙКИ</button>
       </div>
 
@@ -206,6 +206,10 @@
       </div>
 
       <div class="shell-pane" data-shell-pane="codex">
+        <details class="ai-help">
+          <summary>Справка: что нужно для работы ИИ</summary>
+          <div data-ai-help></div>
+        </details>
         <label>Режим<select id="codex-mode"><option value="ask">Спросить</option><option value="edit">Изменить C-код</option></select></label>
         <div id="codex-ask-panel">
           <p>Задай вопрос по исходникам. Вопрос и ответ сохраняются в обсуждении GitHub. Codex получает указание только объяснить код, без правок.</p>
@@ -236,7 +240,11 @@
       </div>
 
       <div class="shell-pane" data-shell-pane="settings">
-        <label class="shell-check"><input id="ai-beta" type="checkbox"> Вопросы и изменения через Codex — БЕТА</label>
+        <label class="shell-check"><input id="ai-beta" type="checkbox"> Включить ИИ — БЕТА</label>
+        <details class="ai-help">
+          <summary>Справка: как подключить ИИ</summary>
+          <div data-ai-help></div>
+        </details>
         <p>При выключенной галочке функции ИИ скрыты и ничего в Codex не отправляется.</p>
         <button id="restart-tour" class="wide-action">ПОКАЗАТЬ ОБУЧЕНИЕ ЕЩЁ РАЗ</button>
         <div class="shell-status" id="app-version"></div>
@@ -255,6 +263,25 @@
       <div><button id="tour-skip">ПРОПУСТИТЬ</button><button id="tour-next" class="primary">ДАЛЬШЕ</button></div>
     </section>
   </div>
+  <template id="ai-help-template">
+    <p><strong>В текущей версии ИИ работает через Codex и GitHub.</strong> Поддержка других сервисов Git-репозиториев планируется и пока недоступна. Инструкция ниже относится к подключению через GitHub.</p>
+    <p>Нужны интернет, аккаунт ChatGPT с доступом к Codex и аккаунт GitHub с доступом к выбранному репозиторию. Само включение галочки открывает функции ИИ, но не подключает Codex к репозиторию.</p>
+    <ol>
+      <li>Открой Codex в браузере и войди в аккаунт ChatGPT.
+        <button type="button" class="ai-help-link" data-external="https://chatgpt.com/codex">https://chatgpt.com/codex</button>
+      </li>
+      <li>Создай environment (окружение): подключи GitHub, разреши доступ к нужному репозиторию и выбери его.
+        <button type="button" class="ai-help-link" data-external="https://chatgpt.com/codex/settings/environments">https://chatgpt.com/codex/settings/environments</button>
+      </li>
+      <li>Проверь подключение: в комментарии к Issue (проблеме) или Pull request напиши <code>@codex</code> и свой запрос. Например:
+        <pre class="ai-help-example">@codex Объясни структуру проекта. Ничего не изменяй.</pre>
+      </li>
+    </ol>
+    <p>Включать Code review для обычных обращений через <code>@codex</code> не требуется. Компьютер включать не нужно — работа выполняется в облаке.</p>
+    <p><strong>В приложении:</strong> войди в GitHub, выбери тот же репозиторий и нужную ветку. В настройках отметь «Включить ИИ», затем открой вкладку «ИИ». В режиме «Спросить» приложение само добавляет <code>@codex</code> и отправляет вопрос по исходникам выбранной ветки.</p>
+    <p>Для вопросов нужен доступ к исходникам и право создавать Issues и комментарии. Для режима «Изменить C-код» также нужны права на запись в репозиторий и Pull requests.</p>
+    <p>Ответ может занять несколько минут. Если реакции нет, проверь доступ Codex именно к выбранному репозиторию. Если бот прислал ссылку на облачный чат, открой её из сообщения.</p>
+  </template>
   <script src="c-generator.js"></script>
   <script src="editor.js"></script>
   <script src="codex-questions.js"></script>

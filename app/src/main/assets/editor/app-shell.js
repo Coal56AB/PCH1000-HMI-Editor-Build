@@ -1,6 +1,7 @@
 (function(){
 'use strict';
 var $=function(s){return document.querySelector(s)},$$=function(s){return Array.from(document.querySelectorAll(s))};
+$$('[data-ai-help]').forEach(function(box){box.appendChild($('#ai-help-template').content.cloneNode(true))});
 var modal=$('#shell-modal'),message=$('#shell-message'),requestId=1,pending={},saveTimer=0;
 var authBusy=false,authVersion=0,authPollRequestId='',authCode='';
 var state={repo:localStorage.getItem('pch-github-repo')||'',branch:localStorage.getItem('pch-github-branch')||'main',pr:Number(localStorage.getItem('pch-codex-pr')||0),head:''};
@@ -13,7 +14,7 @@ function nativeResult(id,ok,text){var p=pending[String(id)];if(!p)return;delete 
 function nativeCall(name,args){return new Promise(function(resolve,reject){var b=bridge(),id=String(requestId++);if(!b||typeof b[name]!=='function'){reject(new Error('Функция доступна только в APK'));return}pending[id]={resolve:resolve,reject:reject};args=args||[];if(name==='startGithubDeviceFlow')b.startGithubDeviceFlow(id,args[0]);else if(name==='pollGithubDeviceFlow'){authPollRequestId=id;b.pollGithubDeviceFlow(id,args[0],args[1],args[2],args[3]);}else{delete pending[id];reject(new Error('Неизвестная системная операция'))}})}
 function open(tab){modal.classList.remove('hidden');selectTab(tab||'project');refreshFolder();refreshAuth()}
 function close(){modal.classList.add('hidden');setMessage('')}
-function selectTab(name){$$('[data-shell-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.shellTab===name)});$$('[data-shell-pane]').forEach(function(p){p.classList.toggle('active',p.dataset.shellPane===name)});$('#shell-title').textContent=name==='github'?'GITHUB':name==='codex'?'CODEX':name==='settings'?'НАСТРОЙКИ':'ПРОЕКТ';if(name==='codex'){updateCodexContext();if(window.CodexQuestions)CodexQuestions.activate()}}
+function selectTab(name){$$('[data-shell-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.shellTab===name)});$$('[data-shell-pane]').forEach(function(p){p.classList.toggle('active',p.dataset.shellPane===name)});$('#shell-title').textContent=name==='github'?'GITHUB':name==='codex'?'ИИ':name==='settings'?'НАСТРОЙКИ':'ПРОЕКТ';if(name==='codex'){updateCodexContext();if(window.CodexQuestions)CodexQuestions.activate()}}
 $('#app-menu').onclick=function(){open('project')};$('#shell-close').onclick=close;modal.addEventListener('click',function(e){if(e.target===modal)close()});
 $$('[data-shell-tab]').forEach(function(b){b.onclick=function(){selectTab(b.dataset.shellTab)}});
 
