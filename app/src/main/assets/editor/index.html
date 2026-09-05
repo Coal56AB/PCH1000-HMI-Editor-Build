@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=contain">
   <title>ПЧ-1000 HMI Editor</title>
   <link rel="stylesheet" href="editor.css">
+  <link rel="stylesheet" href="app-shell.css">
 </head>
 <body>
   <header class="toolbar">
     <div class="app-title"><strong>ПЧ-1000</strong><small id="runtime-state">СИМУЛЯЦИЯ</small></div>
+    <button id="app-menu" class="app-menu" title="Проекты и настройки">⋮</button>
     <select id="scene" class="hidden-control" aria-label="Служебный сценарий экспорта"></select>
     <button id="mode-toggle" class="primary mode-toggle">РЕДАКТОР</button>
     <button id="drawer-toggle" class="edit-only" title="Панель свойств">СВОЙСТВА</button>
@@ -17,6 +19,7 @@
     <button id="grid" class="edit-only active" title="Привязка к сетке">#</button>
     <button id="import" title="Импорт проекта">ОТКР.</button>
     <button id="export">C + JSON</button>
+    <button id="export-folder" title="Экспорт C-проекта в выбранную папку">C В ПАПКУ</button>
     <span id="scale-badge" class="scale-badge">×1</span>
   </header>
 
@@ -24,6 +27,7 @@
     <section class="stage" id="stage">
       <div class="phone" id="phone">
         <iframe id="renderer" src="renderer.html?embed=1&amp;live=1" title="Интерактивная симуляция HMI"></iframe>
+        <canvas id="comparison-canvas" class="comparison-canvas hidden" width="320" height="480"></canvas>
         <div id="interaction" class="interaction" aria-label="Редактор холста">
           <div id="selection" class="selection hidden">
             <i class="handle nw" data-handle="nw"></i><i class="handle ne" data-handle="ne"></i>
@@ -77,6 +81,11 @@
           <label>Зазор, px<input id="gap-px" type="number" min="0" max="32" step="1" value="0"></label>
           <button id="reset-gap">СБРОСИТЬ ЗАЗОР</button>
         </div>
+        <div class="fields three text-position-fields">
+          <label>Текст X, px<input id="text-x" type="number" step="1" value="0"></label>
+          <label>Текст Y, px<input id="text-y" type="number" step="1" value="0"></label>
+          <button id="reset-text-position">СБРОСИТЬ СМЕЩЕНИЕ</button>
+        </div>
       </div>
 
       <div class="tab-pane" data-pane="colors">
@@ -104,14 +113,94 @@
     </div>
     <div class="external-encoder">
       <button id="encoder-minus" aria-label="Энкодер влево">−</button>
-      <button id="encoder-push" class="encoder-push" aria-label="Нажать энкодер"><i></i><strong>ЭНКОДЕР</strong><small>НАЖАТЬ · 1 С — СЛЕДУЮЩИЙ</small></button>
+      <button id="encoder-push" class="encoder-push" aria-label="Нажать энкодер"><i></i><strong>ЭНКОДЕР</strong><small>НАЖАТЬ · 0,5 С — СЛЕДУЮЩИЙ</small></button>
       <button id="encoder-plus" aria-label="Энкодер вправо">+</button>
     </div>
   </section>
 
   <div id="toast" class="toast"></div>
   <div id="busy" class="busy hidden"><div class="spinner"></div><strong>Собираю 47 сцен и C-файлы…</strong><small id="busy-state"></small></div>
+
+  <nav id="compare-bar" class="compare-bar hidden" aria-label="Сравнение рендеров">
+    <button data-compare="before">БЫЛО</button>
+    <button data-compare="after" class="active">СТАЛО</button>
+    <button data-compare="diff">РАЗНИЦА ПИКСЕЛЕЙ</button>
+    <button id="compare-close">ЗАКРЫТЬ</button>
+  </nav>
+
+  <div id="shell-modal" class="shell-modal hidden" role="dialog" aria-modal="true">
+    <section class="shell-card">
+      <header><strong id="shell-title">ПРОЕКТ</strong><button id="shell-close" aria-label="Закрыть">×</button></header>
+      <div class="shell-tabs">
+        <button data-shell-tab="project" class="active">ПРОЕКТ</button>
+        <button data-shell-tab="github">GITHUB</button>
+        <button data-shell-tab="codex" class="ai-tab hidden">CODEX</button>
+        <button data-shell-tab="settings">НАСТРОЙКИ</button>
+      </div>
+
+      <div class="shell-pane active" data-shell-pane="project">
+        <p class="shell-about">Приложение для просмотра, проверки и редактирования интерфейса экранчика ПЧ-1000. На выходе получается C-код для встраивания в микроконтроллер, который будет отрисовывать интерфейс на реальном дисплее.</p>
+        <div class="shell-status" id="folder-status">Сейчас используется встроенный шаблон</div>
+        <button id="choose-folder" class="wide-action">ВЫБРАТЬ РАБОЧУЮ ПАПКУ</button>
+        <button id="save-folder" class="wide-action">СОХРАНИТЬ C-ПРОЕКТ В ПАПКУ</button>
+        <button id="open-import" class="wide-action">ОТКРЫТЬ JSON ИЛИ ZIP</button>
+      </div>
+
+      <div class="shell-pane" data-shell-pane="github">
+        <div id="github-auth-off">
+          <p>Для входа через GitHub нужен Client ID OAuth-приложения с включённым Device Flow. Секрет в APK не хранится.</p>
+          <label>GitHub OAuth Client ID<input id="github-client-id" type="text" autocomplete="off" placeholder="Iv1…"></label>
+          <button id="github-login" class="wide-action">ВОЙТИ ЧЕРЕЗ GITHUB</button>
+          <details><summary>Вход с токеном</summary><label>Personal access token<input id="github-token" type="password" autocomplete="off"></label><button id="github-token-save">СОХРАНИТЬ ТОКЕН</button></details>
+          <div id="device-code" class="device-code hidden"></div>
+        </div>
+        <div id="github-auth-on" class="hidden">
+          <div class="shell-status"><span id="github-user">GitHub подключён</span><button id="github-logout">ВЫЙТИ</button></div>
+          <label>Репозиторий C-проекта<select id="github-repo"></select></label>
+          <label>Ветка<select id="github-branch"></select></label>
+          <div class="two-actions"><button id="github-refresh">ОБНОВИТЬ</button><button id="github-pull">PULL</button></div>
+          <details><summary>Новая ветка и история</summary><label>Название новой ветки<input id="new-branch-name" type="text" placeholder="design/clock-fix"></label><button id="create-branch">СОЗДАТЬ ВЕТКУ</button><button id="github-history">ПОКАЗАТЬ ИСТОРИЮ</button><pre id="commit-history" class="code-diff"></pre></details>
+          <label>Сообщение коммита<input id="github-message" type="text" value="Update PCH-1000 HMI"></label>
+          <button id="github-push" class="wide-action">COMMIT И PUSH</button>
+          <details><summary>Создать репозиторий</summary><label>Название<input id="new-repo-name" type="text" value="PCH1000-HMI-C"></label><label class="shell-check"><input id="new-repo-private" type="checkbox"> Приватный</label><button id="create-repo">СОЗДАТЬ</button></details>
+          <label>Репозиторий обновлений APK<select id="update-repo"></select></label>
+          <button id="check-update" class="wide-action">ПРОВЕРИТЬ ОБНОВЛЕНИЕ APK</button>
+          <div id="update-result"></div>
+        </div>
+      </div>
+
+      <div class="shell-pane" data-shell-pane="codex">
+        <p>Codex создаст отдельную ветку и Draft PR. Основная ветка не изменится, пока ты сам не примешь результат.</p>
+        <label>Что изменить в C-коде<textarea id="codex-task" rows="5" placeholder="Например: изменить форму выбранной рамки и добавить скругление…"></textarea></label>
+        <div id="codex-context" class="shell-status">Элемент не выбран</div>
+        <button id="codex-start" class="wide-action">СОЗДАТЬ ВЕТКУ И ОТПРАВИТЬ @CODEX</button>
+        <label>Активный PR<input id="codex-pr" type="number" min="1" placeholder="Номер PR"></label>
+        <div class="two-actions"><button id="codex-refresh">ПРОВЕРИТЬ</button><button id="codex-compare">СРАВНИТЬ</button></div>
+        <button id="codex-followup" class="wide-action">ОТПРАВИТЬ УТОЧНЕНИЕ В ЭТОТ PR</button>
+        <button id="codex-merge" class="wide-action">ПРИНЯТЬ И ОБЪЕДИНИТЬ</button>
+        <button id="codex-reject" class="wide-action danger">ОТКЛОНИТЬ И УДАЛИТЬ ВЕТКУ</button>
+        <pre id="code-diff" class="code-diff"></pre>
+      </div>
+
+      <div class="shell-pane" data-shell-pane="settings">
+        <label class="shell-check"><input id="ai-beta" type="checkbox"> Изменения через Codex — БЕТА</label>
+        <p>При выключенной галочке функции ИИ скрыты и ничего в Codex не отправляется.</p>
+        <button id="restart-tour" class="wide-action">ПОКАЗАТЬ ОБУЧЕНИЕ ЕЩЁ РАЗ</button>
+        <div class="shell-status" id="app-version"></div>
+      </div>
+      <footer id="shell-message"></footer>
+    </section>
+  </div>
+
+  <div id="tour" class="tour hidden">
+    <div id="tour-spot" class="tour-spot"></div>
+    <section class="tour-card">
+      <small id="tour-count"></small><strong id="tour-title"></strong><p id="tour-text"></p>
+      <div><button id="tour-skip">ПРОПУСТИТЬ</button><button id="tour-next" class="primary">ДАЛЬШЕ</button></div>
+    </section>
+  </div>
   <script src="c-generator.js"></script>
   <script src="editor.js"></script>
+  <script src="app-shell.js"></script>
 </body>
 </html>
