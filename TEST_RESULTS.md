@@ -1,3 +1,9 @@
+# Исправление публикации после run 33959726093
+
+Лог GitHub подтвердил: Prepare complete release files остановился на git diff с fatal: bad object 9fc3cac139b2b6dca4cf3d449b4a940ec57ece1a (exit 128). Checkout загружал только последний коммит. В publish-v1.2.2.yml добавлен fetch-depth: 0. Проверка совпадения кода приложения с успешной сборкой сохранена.
+
+actions/checkout обновлён до v5 в обоих сценариях, actions/github-script — до v8 в публикации; их action.yml использует node24. YAML, shell и JavaScript синтаксис проверены локально. Исправленный workflow пока не запускался в GitHub: файлы передаются пользователю для push. Сам APK и его подпись не менялись.
+
 # Android-сборка 1.2.2 подтверждена в GitHub Actions
 
 Build APK #5, run 33959256992, commit 9fc3cac139b2b6dca4cf3d449b4a940ec57ece1a: success. Архив APK скачан через GitHub и сверен с digest артефакта 4d9186befb676ebd3220dae3dcb5e6fda0baf2fef07def953caee01b2518a00b. В DEX есть заданный Client ID; app-shell.js в APK совпадает с исходником. На физическом Android не запускался.
