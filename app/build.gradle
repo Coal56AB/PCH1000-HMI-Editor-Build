@@ -7,6 +7,29 @@ dependencies {
     implementation 'androidx.core:core:1.15.0'
 }
 
+def signingStore = System.getenv('PCH_SIGNING_STORE_FILE')
+def signingPassword = System.getenv('PCH_SIGNING_PASSWORD')
+def signingAlias = System.getenv('PCH_SIGNING_ALIAS')
+def hasPermanentSigning = signingStore && signingPassword && signingAlias
+if (hasPermanentSigning) {
+    def keyStore = java.security.KeyStore.getInstance('PKCS12')
+    new File(signingStore).withInputStream { keyStore.load(it, signingPassword.toCharArray()) }
+    def certificate = keyStore.getCertificate(signingAlias)
+    if (certificate == null || !keyStore.isKeyEntry(signingAlias)) {
+        throw new GradleException('Permanent signing key alias is missing')
+    }
+    def fingerprint = java.security.MessageDigest.getInstance('SHA-256').digest(certificate.encoded).encodeHex().toString()
+    if (fingerprint != rootProject.file('signing-certificate.sha256').text.trim().toLowerCase()) {
+        throw new GradleException('Wrong APK signing certificate; build cancelled')
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project.path == ':app' && it.name.endsWith('Release') } && !hasPermanentSigning) {
+        throw new GradleException('Release requires the permanent signing key. Configure PCH1000_SIGNING_BUNDLE in Actions secrets.')
+    }
+}
+
 android {
     namespace 'com.pch1000.hmieditor'
     compileSdk 35
@@ -15,8 +38,8 @@ android {
         applicationId 'com.pch1000.hmieditor'
         minSdk 26
         targetSdk 35
-        versionCode 6
-        versionName '1.2.3'
+        versionCode 7
+        versionName '1.2.4'
         // Public app identifier, never a token or client secret.
         def oauthClientId = providers.gradleProperty('githubOAuthClientId').orElse(providers.environmentVariable('GITHUB_OAUTH_CLIENT_ID')).getOrElse('Ov23liZhW4JlhvBxx6zs')
         if (!(oauthClientId ==~ /[A-Za-z0-9.\-]*/)) {
@@ -29,8 +52,26 @@ android {
         buildConfig true
     }
 
+    signingConfigs {
+        permanent {
+            if (hasPermanentSigning) {
+                storeFile file(signingStore)
+                storePassword signingPassword
+                keyAlias signingAlias
+                keyPassword signingPassword
+                storeType 'PKCS12'
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // Development builds do not replace the installed release application.
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
         release {
+            signingConfig signingConfigs.permanent
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

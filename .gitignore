@@ -4,3 +4,7 @@ local.properties
 node_modules/
 *.jks
 *.keystore
+
+*.p12
+*SIGNING_BUNDLE*.txt
+/signing-private/

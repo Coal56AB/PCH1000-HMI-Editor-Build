@@ -27,16 +27,35 @@ jobs:
       - run: node tests/check_editor.mjs
       - run: node tests/check_geometry.mjs
       - run: node tests/check_export.mjs
+      - run: python3 tests/check_signing.py
       - run: node tests/check_github_auth.mjs
       - name: Test GitHub device authorization recovery
         run: |
           javac -encoding UTF-8 -d /tmp/pch-auth-tests app/src/main/java/com/pch1000/hmieditor/GitHubDevicePoller.java tests/GitHubDevicePollerTest.java
           java -cp /tmp/pch-auth-tests com.pch1000.hmieditor.GitHubDevicePollerTest
-      - run: gradle assembleDebug
+      - name: Restore the permanent signing key
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          PCH1000_SIGNING_BUNDLE: ${{ secrets.PCH1000_SIGNING_BUNDLE }}
+        run: python3 scripts/prepare_signing.py
+      - name: Build signed release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: gradle assembleRelease
+      - name: Verify the permanent APK signature
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python3 scripts/verify_apk_signing.py
       - uses: actions/upload-artifact@v6
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
-          name: PCH1000-HMI-Editor-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: PCH1000-HMI-Editor-release
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+      - name: Build isolated development APK
+        if: github.ref != 'refs/heads/main' || github.event_name == 'pull_request'
+        run: gradle assembleDebug
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pch1000-signing.p12"
 
   release:
     name: Publish current APK and complete sources
@@ -57,7 +76,7 @@ jobs:
           script: |
             const fs = require('fs');
             const result = await github.rest.actions.listWorkflowRunArtifacts({...context.repo, run_id: context.runId});
-            const artifact = result.data.artifacts.find(a => a.name === 'PCH1000-HMI-Editor-debug');
+            const artifact = result.data.artifacts.find(a => a.name === 'PCH1000-HMI-Editor-release');
             if (!artifact || artifact.expired) throw new Error('APK artifact missing');
             const response = await github.rest.actions.downloadArtifact({...context.repo, artifact_id: artifact.id, archive_format: 'zip'});
             fs.writeFileSync('built-apk.zip', Buffer.from(response.data));
@@ -71,8 +90,8 @@ jobs:
           PYCODE
           version="$(cat release-version.txt)"
           mkdir release-files
-          unzip -p built-apk.zip app-debug.apk > "release-files/PCH1000_HMI_Editor_v${version}-debug.apk"
-          test -s "release-files/PCH1000_HMI_Editor_v${version}-debug.apk"
+          unzip -p built-apk.zip app-release.apk > "release-files/PCH1000_HMI_Editor_v${version}.apk"
+          test -s "release-files/PCH1000_HMI_Editor_v${version}.apk"
           git archive --format=zip HEAD -o "release-files/PCH1000_HMI_Editor_v${version}_full.zip"
           cd release-files
           sha256sum *.apk *.zip > SHA256SUMS.txt
@@ -92,11 +111,12 @@ jobs:
             exit 1
           fi
           cat > release-notes.md <<'NOTES'
-          Исправлено зависшее окно генерации после GitHub push и ошибок экспорта.
-          На верхней панели одна кнопка «Экспорт»: рабочая папка или ZIP, с подтверждением до генерации. Кнопка «Откр.» убрана с верхней панели; рабочая папка и импорт доступны в меню проекта.
+          Настроена постоянная подпись APK. Новые релизы используют один сохранённый ключ; отсутствие или подмена ключа останавливают сборку и публикацию.
 
-          APK и полный архив исходников взяты из одного успешного запуска сборки.
-          Эта сборка пока использует автоматически созданный debug-ключ. Установка поверх APK с другой подписью не поддерживается; постоянный ключ подписи для дальнейших автообновлений ещё требуется настроить. Сохраните свои проекты перед сменой установки.
+          После перехода на эту версию последующие обновления устанавливаются поверх неё через кнопку обновления приложения, с подтверждением Android и сохранением данных.
+          Переход с прежних debug-сборок однократный: их ключи не были сохранены, поэтому Android не позволит установить эту версию поверх них. Сохраните проекты перед переустановкой.
+
+          APK и полные исходники относятся к одному коммиту. Закрытый ключ в исходники и релиз не включён.
           NOTES
           gh release create "$tag" release-files/* --target "$RELEASE_TARGET" --title "PCH1000 HMI Editor $version" --notes-file release-notes.md --draft
           gh release edit "$tag" --draft=false --latest
