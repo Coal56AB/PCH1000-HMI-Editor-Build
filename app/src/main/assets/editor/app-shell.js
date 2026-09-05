@@ -1,7 +1,6 @@
 (function(){
 'use strict';
 var $=function(s){return document.querySelector(s)},$$=function(s){return Array.from(document.querySelectorAll(s))};
-$$('[data-ai-help]').forEach(function(box){box.appendChild($('#ai-help-template').content.cloneNode(true))});
 var modal=$('#shell-modal'),message=$('#shell-message'),requestId=1,pending={},saveTimer=0;
 var authBusy=false,authVersion=0,authPollRequestId='',authCode='';
 var state={repo:localStorage.getItem('pch-github-repo')||'',branch:localStorage.getItem('pch-github-branch')||'main',pr:Number(localStorage.getItem('pch-codex-pr')||0),head:''};
@@ -9,12 +8,12 @@ function setMessage(text,error){message.textContent=text||'';message.style.color
 function bridge(){return window.AndroidEditor||null}
 function parse(text){try{return JSON.parse(text||'{}')}catch(e){return{text:text||''}}}
 function api(method,path,body){return new Promise(function(resolve,reject){var id=String(requestId++);pending[id]={resolve:resolve,reject:reject};var b=bridge();if(!b){delete pending[id];reject(new Error('GitHub доступен только в APK'));return}b.githubRequest(id,method,path,body==null?'':JSON.stringify(body))})}
-function githubResult(id,status,text){var p=pending[String(id)];if(!p)return;delete pending[String(id)];var data=parse(text);if(status>=200&&status<300)p.resolve(data);else p.reject(new Error(data.message||data.error_description||('GitHub: HTTP '+status)))}
+function githubResult(id,status,text){var p=pending[String(id)];if(!p)return;delete pending[String(id)];var data=parse(text);if(status>=200&&status<300)p.resolve(data);else{var details=Array.isArray(data.errors)?data.errors.map(function(e){return typeof e==='string'?e:e.message||[e.resource,e.field,e.code].filter(Boolean).join(': ')}).join('; '):'';var error=new Error('GitHub HTTP '+status+': '+(data.message||data.error_description||'Ошибка запроса')+(details?' · '+details:''));error.status=Number(status);p.reject(error)}}
 function nativeResult(id,ok,text){var p=pending[String(id)];if(!p)return;delete pending[String(id)];if(ok)p.resolve(parse(text));else p.reject(new Error(text||'Операция не выполнена'))}
 function nativeCall(name,args){return new Promise(function(resolve,reject){var b=bridge(),id=String(requestId++);if(!b||typeof b[name]!=='function'){reject(new Error('Функция доступна только в APK'));return}pending[id]={resolve:resolve,reject:reject};args=args||[];if(name==='startGithubDeviceFlow')b.startGithubDeviceFlow(id,args[0]);else if(name==='pollGithubDeviceFlow'){authPollRequestId=id;b.pollGithubDeviceFlow(id,args[0],args[1],args[2],args[3]);}else{delete pending[id];reject(new Error('Неизвестная системная операция'))}})}
 function open(tab){modal.classList.remove('hidden');selectTab(tab||'project');refreshFolder();refreshAuth()}
 function close(){modal.classList.add('hidden');setMessage('')}
-function selectTab(name){$$('[data-shell-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.shellTab===name)});$$('[data-shell-pane]').forEach(function(p){p.classList.toggle('active',p.dataset.shellPane===name)});$('#shell-title').textContent=name==='github'?'GITHUB':name==='codex'?'ИИ':name==='settings'?'НАСТРОЙКИ':'ПРОЕКТ';if(name==='codex'){updateCodexContext();if(window.CodexQuestions)CodexQuestions.activate()}}
+function selectTab(name){$$('[data-shell-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.shellTab===name)});$$('[data-shell-pane]').forEach(function(p){p.classList.toggle('active',p.dataset.shellPane===name)});$('#shell-title').textContent=name==='github'?'GITHUB':name==='codex'?'CODEX':name==='settings'?'НАСТРОЙКИ':'ПРОЕКТ';if(name==='codex'){updateCodexContext();if(window.CodexQuestions)CodexQuestions.activate()}}
 $('#app-menu').onclick=function(){open('project')};$('#shell-close').onclick=close;modal.addEventListener('click',function(e){if(e.target===modal)close()});
 $$('[data-shell-tab]').forEach(function(b){b.onclick=function(){selectTab(b.dataset.shellTab)}});
 
@@ -105,13 +104,69 @@ CodexQuestions.init({api:api,context:function(){return{repo:state.repo,branch:st
 $('#codex-mode').onchange=function(){var ask=this.value==='ask';$('#codex-ask-panel').classList.toggle('hidden',!ask);$('#codex-edit-panel').classList.toggle('hidden',ask);if(ask)CodexQuestions.activate()};
 function updateCodexContext(){var c=HmiEditor.selectedContext();$('#codex-context').textContent=c.key?'Выбран: '+c.name+' · '+c.key+' · '+c.sceneName:'Элемент не выбран — задача будет относиться ко всему C-проекту'}
 async function createBranch(repo,base,name){var ref=await api('GET','/repos/'+repo+'/git/ref/heads/'+encodeURIComponent(base));await api('POST','/repos/'+repo+'/git/refs',{ref:'refs/heads/'+name,sha:ref.object.sha});return name}
-$('#codex-start').onclick=async function(){try{
-  if(!$('#ai-beta').checked)throw new Error('Сначала включи Codex-бета в настройках');if(!state.repo)throw new Error('Выбери репозиторий C-проекта');var task=$('#codex-task').value.trim();if(!task)throw new Error('Опиши задачу');
-  var ctx=HmiEditor.selectedContext(),branch='codex/hmi-'+new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14);setMessage('Создаю ветку '+branch+'…');await createBranch(state.repo,state.branch,branch);
-  var pr=await api('POST','/repos/'+state.repo+'/pulls',{title:'HMI: '+task.slice(0,70),head:branch,base:state.branch,body:'Изменение C-интерфейса ПЧ-1000 через приложение.\n\nРабочая сцена: '+ctx.sceneName+'\nЭлемент: '+(ctx.key||'весь проект'),draft:true});
-  var prompt='@codex '+task+'\n\nРаботай только с C-рендерером интерфейса ПЧ-1000. Не изменяй Android-приложение. Сохрани совместимость C99 и обнови PCH1000_HMI_editor_project.json, чтобы приложение могло показать рендер «было/стало». Запусти make test.\n\nКонтекст: сцена '+ctx.sceneName+', элемент '+(ctx.key||'не выбран')+'.';
-  await api('POST','/repos/'+state.repo+'/issues/'+pr.number+'/comments',{body:prompt});state.pr=pr.number;state.head=branch;$('#codex-pr').value=pr.number;localStorage.setItem('pch-codex-pr',String(pr.number));setMessage('Draft PR #'+pr.number+' создан, задача отправлена Codex')
-  }catch(e){setMessage(e.message,true)}};
+var codexEditBusy=false;
+function saveCodexEdit(job){localStorage.setItem('pch-codex-edit-pending',JSON.stringify(job))}
+function rememberCodexEditPr(job){if(state.repo===job.repo&&state.branch===job.base){state.pr=job.pr;state.head=job.branch;$('#codex-pr').value=job.pr;localStorage.setItem('pch-codex-pr',String(job.pr))}}
+function encodeUtf8Base64(text){var binary='';new TextEncoder().encode(text).forEach(function(byte){binary+=String.fromCharCode(byte)});return btoa(binary)}
+async function codexEditGet(path){try{return await api('GET',path)}catch(e){if(e.status===404)return null;throw e}}
+$('#codex-start').onclick=async function(){
+  if(codexEditBusy)return;
+  var button=$('#codex-start'),job=null,step='Подготовка запроса';
+  try{
+    if(!$('#ai-beta').checked)throw new Error('Сначала включи ИИ в настройках');
+    if(!hasToken())throw new Error('Войди в GitHub');
+    if(!state.repo)throw new Error('Выбери репозиторий C-проекта');
+    var task=$('#codex-task').value.trim();if(!task)throw new Error('Опиши задачу');
+    codexEditBusy=true;button.disabled=true;
+    var ctx=HmiEditor.selectedContext(),signature=JSON.stringify([state.repo,state.branch,task,ctx.sceneName,ctx.key]);
+    var saved=parse(localStorage.getItem('pch-codex-edit-pending'));
+    if(saved.signature===signature)job=saved;
+    else{
+      var random=new Uint32Array(2);window.crypto.getRandomValues(random);
+      var id=Date.now().toString(36)+'-'+Array.from(random,function(n){return n.toString(16).padStart(8,'0')}).join('');
+      job={signature:signature,repo:state.repo,base:state.branch,branch:'codex/hmi-'+id,path:'.codex/tasks/hmi-'+id+'.md',pr:0};
+      job.title='HMI: '+task.slice(0,70);
+      job.body='Изменение C-интерфейса ПЧ-1000 через приложение.\n\nРабочая сцена: '+ctx.sceneName+'\nЭлемент: '+(ctx.key||'весь проект');
+      job.prompt='@codex '+task+'\n\nРаботай только с C-рендерером интерфейса ПЧ-1000. Не изменяй Android-приложение. Сохрани совместимость C99 и обнови PCH1000_HMI_editor_project.json, чтобы приложение могло показать рендер «было/стало». Запусти make test.\n\nКонтекст: сцена '+ctx.sceneName+', элемент '+(ctx.key||'не выбран')+'.\n\n<!-- pch-codex-request:'+id+' -->';
+      // A task document provides a real initial diff; do not export or overwrite C files.
+      job.document='# Задача для Codex\n\n'+task+'\n\nРепозиторий: '+job.repo+'\nВетка-основа: '+job.base+'\n\n'+job.body+'\n';
+      saveCodexEdit(job);
+    }
+    var root='/repos/'+job.repo;
+    step='Создание ветки';setMessage(step+': '+job.branch+'…');
+    if(!await codexEditGet(root+'/git/ref/heads/'+encodeURIComponent(job.branch))){
+      if(!job.baseSha){var ref=await api('GET',root+'/git/ref/heads/'+encodeURIComponent(job.base));job.baseSha=ref.object.sha;saveCodexEdit(job)}
+      await api('POST',root+'/git/refs',{ref:'refs/heads/'+job.branch,sha:job.baseSha});
+    }
+    step='Сохранение описания задачи';setMessage(step+'…');
+    var filePath=root+'/contents/'+encodedPath(job.path);
+    var existing=await codexEditGet(filePath+'?ref='+encodeURIComponent(job.branch));
+    if(!existing){
+      await api('PUT',filePath,{message:'Добавить задачу для Codex',content:encodeUtf8Base64(job.document),branch:job.branch});
+    }else if(existing.type!=='file'||decodeBase64(existing.content)!==job.document){
+      throw new Error('Описание задачи в '+job.branch+' изменено. Автоматическая перезапись отменена.');
+    }
+    step='Создание Draft PR';setMessage(step+'…');
+    if(!job.pr){
+      var prs=await api('GET',root+'/pulls?state=open&head='+encodeURIComponent(job.repo.split('/')[0]+':'+job.branch)+'&base='+encodeURIComponent(job.base));
+      var pr=prs[0]||await api('POST',root+'/pulls',{title:job.title,head:job.branch,base:job.base,body:job.body+'\n\nОписание задачи: `'+job.path+'`',draft:true});
+      job.pr=pr.number;saveCodexEdit(job);
+    }
+    rememberCodexEditPr(job);
+    step='Отправка запроса Codex';setMessage(step+' в PR #'+job.pr+'…');
+    // Recover a comment accepted by GitHub even if its response was lost.
+    var sent=false,page=1,comments;
+    do{
+      comments=await api('GET',root+'/issues/'+job.pr+'/comments?per_page=100&page='+page++);
+      sent=comments.some(function(c){return c.body===job.prompt});
+    }while(!sent&&comments.length===100);
+    if(!sent)await api('POST',root+'/issues/'+job.pr+'/comments',{body:job.prompt});
+    localStorage.removeItem('pch-codex-edit-pending');
+    setMessage(job.repo+': Draft PR #'+job.pr+' создан, задача отправлена Codex');
+  }catch(e){
+    setMessage(step+': '+e.message+(job?' · Ветка '+job.branch+(job.pr?', PR #'+job.pr:'')+'. Повтори отправку того же запроса, чтобы продолжить.':''),true);
+  }finally{codexEditBusy=false;button.disabled=false}
+};
 async function loadPr(){var n=Number($('#codex-pr').value||state.pr);if(!n)throw new Error('Укажи номер PR');var pr=await api('GET','/repos/'+state.repo+'/pulls/'+n);state.pr=n;state.head=pr.head.ref;localStorage.setItem('pch-codex-pr',String(n));var files=await api('GET','/repos/'+state.repo+'/pulls/'+n+'/files?per_page=100');$('#code-diff').textContent=files.map(function(f){return f.filename+'  +'+f.additions+' −'+f.deletions+'\n'+(f.patch||'(бинарный или слишком большой файл)')}).join('\n\n');setMessage('PR #'+n+': '+pr.state+(pr.mergeable===false?' · есть конфликт':''));return pr}
 $('#codex-refresh').onclick=function(){loadPr().catch(function(e){setMessage(e.message,true)})};
 $('#codex-compare').onclick=async function(){try{var pr=await loadPr(),text=await fetchProject(state.repo,pr.head.ref);close();await HmiEditor.startComparison(text)}catch(e){setMessage(e.message,true)}};
