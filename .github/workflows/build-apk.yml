@@ -26,6 +26,8 @@ jobs:
           gradle-version: '8.9'
       - run: node --check app/src/main/assets/editor/editor.js
       - run: node --check app/src/main/assets/editor/app-shell.js
+      - run: node --check app/src/main/assets/editor/codex-markdown.js
+      - run: node tests/check_codex_markdown.mjs
       - run: node --check app/src/main/assets/editor/codex-questions.js
       - run: node tests/check_codex_questions.mjs
       - run: node --check app/src/main/assets/editor/codex-edits.js

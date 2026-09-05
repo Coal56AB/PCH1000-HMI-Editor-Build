@@ -106,9 +106,17 @@ function updateCodexContext(){var c=HmiEditor.selectedContext();$('#codex-contex
 async function createBranch(repo,base,name){var ref=await api('GET','/repos/'+repo+'/git/ref/heads/'+encodeURIComponent(base));await api('POST','/repos/'+repo+'/git/refs',{ref:'refs/heads/'+name,sha:ref.object.sha});return name}
 var codexEditBusy=false;
 function saveCodexEdit(job){localStorage.setItem('pch-codex-edit-pending',JSON.stringify(job))}
-function rememberCodexEditPr(job){if(window.CodexEdits)CodexEdits.remember(job.repo,job.pr);if(state.repo===job.repo&&state.branch===job.base){state.pr=job.pr;state.head=job.branch;$('#codex-pr').value=job.pr;localStorage.setItem('pch-codex-pr',String(job.pr))}}
-function encodeUtf8Base64(text){var binary='';new TextEncoder().encode(text).forEach(function(byte){binary+=String.fromCharCode(byte)});return btoa(binary)}
-async function codexEditGet(path){try{return await api('GET',path)}catch(e){if(e.status===404)return null;throw e}}
+function branchSlug(text){
+  var ru={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
+  var value=Array.from(String(text||'').toLowerCase(),function(c){return Object.prototype.hasOwnProperty.call(ru,c)?ru[c]:c}).join('').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  return value.split('-').filter(Boolean).slice(0,6).join('-').slice(0,46).replace(/-+$/,'')||'hmi-change'
+}
+function readableBranch(task,suffix){return 'codex/'+branchSlug(task)+'-'+suffix}
+async function findTaskIssue(root,marker){
+  var page=1,batch;
+  do{batch=await api('GET',root+'/issues?state=all&per_page=100&page='+page++);var found=batch.find(function(item){return !item.pull_request&&String(item.body||'').indexOf(marker)>=0});if(found)return found}while(batch.length===100&&page<=6);
+  return null
+}
 $('#codex-start').onclick=async function(){
   if(codexEditBusy)return;
   var button=$('#codex-start'),job=null,step='Подготовка запроса';
@@ -120,52 +128,33 @@ $('#codex-start').onclick=async function(){
     codexEditBusy=true;button.disabled=true;
     var ctx=HmiEditor.selectedContext(),signature=JSON.stringify([state.repo,state.branch,task,ctx.sceneName,ctx.key]);
     var saved=parse(localStorage.getItem('pch-codex-edit-pending'));
-    if(saved.signature===signature)job=saved;
+    if(saved.signature===signature&&saved.marker)job=saved;
     else{
-      var random=new Uint32Array(2);window.crypto.getRandomValues(random);
-      var id=Date.now().toString(36)+'-'+Array.from(random,function(n){return n.toString(16).padStart(8,'0')}).join('');
-      job={signature:signature,repo:state.repo,base:state.branch,branch:'codex/hmi-'+id,path:'.codex/tasks/hmi-'+id+'.md',pr:0};
+      var random=new Uint32Array(1);window.crypto.getRandomValues(random);
+      var suffix=random[0].toString(16).padStart(8,'0'),id=Date.now().toString(36)+'-'+suffix;
+      job={id:id,signature:signature,repo:state.repo,base:state.branch,branch:readableBranch(task,suffix),issue:0,marker:'<!-- pch-codex-edit:'+id+' -->'};
       job.title='HMI: '+task.slice(0,70);
-      job.body='Изменение C-интерфейса ПЧ-1000 через приложение.\n\nРабочая сцена: '+ctx.sceneName+'\nЭлемент: '+(ctx.key||'весь проект');
-      job.prompt='@codex '+task+'\n\nРаботай только с C-рендерером интерфейса ПЧ-1000. Не изменяй Android-приложение. Сохрани совместимость C99 и обнови PCH1000_HMI_editor_project.json, чтобы приложение могло показать рендер «было/стало». Запусти доступные проверки. Опубликуй коммиты именно в текущую ветку этого PR; не создавай другой PR и не выполняй слияние. Ответь по-русски в этом PR: что изменено, какие проверки прошли и опубликованы ли изменения. Если публикация не удалась, явно сообщи об этом.\n\nВетка для публикации: '+job.branch+'\nКонтекст: сцена '+ctx.sceneName+', элемент '+(ctx.key||'не выбран')+'.\n\n<!-- pch-codex-request:'+id+' -->';
-      // A task document provides a real initial diff; do not export or overwrite C files.
-      job.document='# Задача для Codex\n\n'+task+'\n\nРепозиторий: '+job.repo+'\nВетка-основа: '+job.base+'\n\n'+job.body+'\n';
+      job.body='Изменение C-интерфейса ПЧ-1000 через приложение.\n\nВетка-основа: `'+job.base+'`\nЖелаемое имя ветки результата: `'+job.branch+'`\nРабочая сцена: '+ctx.sceneName+'\nЭлемент: '+(ctx.key||'весь проект')+'\n\n'+job.marker;
       saveCodexEdit(job);
     }
     var root='/repos/'+job.repo;
-    step='Создание ветки';setMessage(step+': '+job.branch+'…');
-    if(!await codexEditGet(root+'/git/ref/heads/'+encodeURIComponent(job.branch))){
-      if(!job.baseSha){var ref=await api('GET',root+'/git/ref/heads/'+encodeURIComponent(job.base));job.baseSha=ref.object.sha;saveCodexEdit(job)}
-      await api('POST',root+'/git/refs',{ref:'refs/heads/'+job.branch,sha:job.baseSha});
-    }
-    step='Сохранение описания задачи';setMessage(step+'…');
-    var filePath=root+'/contents/'+encodedPath(job.path);
-    var existing=await codexEditGet(filePath+'?ref='+encodeURIComponent(job.branch));
-    if(!existing){
-      await api('PUT',filePath,{message:'Добавить задачу для Codex',content:encodeUtf8Base64(job.document),branch:job.branch});
-    }else if(existing.type!=='file'||decodeBase64(existing.content)!==job.document){
-      throw new Error('Описание задачи в '+job.branch+' изменено. Автоматическая перезапись отменена.');
-    }
-    step='Создание Draft PR';setMessage(step+'…');
-    if(!job.pr){
-      var prs=await api('GET',root+'/pulls?state=open&head='+encodeURIComponent(job.repo.split('/')[0]+':'+job.branch)+'&base='+encodeURIComponent(job.base));
-      var pr=prs[0]||await api('POST',root+'/pulls',{title:job.title,head:job.branch,base:job.base,body:job.body+'\n\nОписание задачи: `'+job.path+'`',draft:true});
-      job.pr=pr.number;saveCodexEdit(job);
-    }
-    rememberCodexEditPr(job);
-    step='Отправка запроса Codex';setMessage(step+' в PR #'+job.pr+'…');
+    step='Создание задачи GitHub';setMessage(step+'…');
+    if(!job.issue){var issue=await findTaskIssue(root,job.marker)||await api('POST',root+'/issues',{title:job.title,body:job.body});job.issue=issue.number;saveCodexEdit(job)}
+    job.prompt='@codex '+task+'\n\nРаботай с C-рендерером интерфейса ПЧ-1000. Не изменяй Android-приложение. Сохрани совместимость C99 и обнови PCH1000_HMI_editor_project.json для сравнения «было/стало». Запусти доступные проверки. Не пытайся выполнять обычный git push из контейнера: после завершения подготовь полный diff, чтобы пользователь опубликовал его штатной кнопкой Open pull request в задаче Codex. Для результата используй понятную ветку `'+job.branch+'`, а в описании PR укажи `Resolves #'+job.issue+'`. Ответь по-русски: что изменено, какие проверки прошли и готов ли diff к публикации.\n\nВетка-основа: '+job.base+'. Контекст: сцена '+ctx.sceneName+', элемент '+(ctx.key||'не выбран')+'.\n\n<!-- pch-codex-request:'+job.id+' -->';
+    saveCodexEdit(job);if(window.CodexEdits)CodexEdits.rememberTask(job);
+    step='Отправка запроса Codex';setMessage(step+' в Issue #'+job.issue+'…');
     // Recover a comment accepted by GitHub even if its response was lost.
     var sent=false,page=1,comments;
     do{
-      comments=await api('GET',root+'/issues/'+job.pr+'/comments?per_page=100&page='+page++);
+      comments=await api('GET',root+'/issues/'+job.issue+'/comments?per_page=100&page='+page++);
       sent=comments.some(function(c){return c.body===job.prompt});
     }while(!sent&&comments.length===100);
-    if(!sent)await api('POST',root+'/issues/'+job.pr+'/comments',{body:job.prompt});
+    if(!sent)await api('POST',root+'/issues/'+job.issue+'/comments',{body:job.prompt});
     localStorage.removeItem('pch-codex-edit-pending');
-    setMessage(job.repo+': Draft PR #'+job.pr+' создан, задача отправлена Codex');
+    setMessage(job.repo+': задача #'+job.issue+' отправлена Codex');
     if(window.CodexEdits)CodexEdits.activate();
   }catch(e){
-    setMessage(step+': '+e.message+(job?' · Ветка '+job.branch+(job.pr?', PR #'+job.pr:'')+'. Повтори отправку того же запроса, чтобы продолжить.':''),true);
+    setMessage(step+': '+e.message+(job?' · Повтори тот же запрос, чтобы продолжить без дубликатов.':''),true);
   }finally{codexEditBusy=false;button.disabled=false}
 };
 async function loadPr(){var s=await CodexEdits.refresh();return s&&s.pr}
@@ -224,4 +213,3 @@ window.AppShell={githubAuthProgress:githubAuthProgress,githubResult:githubResult
 refreshFolder();refreshAuth();
 maybeAutoCheckUpdate();
 })();
-

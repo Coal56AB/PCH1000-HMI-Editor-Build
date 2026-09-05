@@ -24,8 +24,24 @@ body.tour-active .properties{bottom:var(--tour-reserve,180px);max-height:calc(10
 .codex-conversation{max-height:45dvh;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain}
 .codex-message{padding:10px;margin:8px 0;border:1px solid #40535b;border-radius:6px;background:#0c181e}
 .codex-message header{font-size:10px;color:var(--green);margin-bottom:6px}
-.codex-message pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 sans-serif;color:#dce2e4}
-.codex-message a{display:block;margin-top:7px;color:#69b8ed;font-size:11px;overflow-wrap:anywhere}
+.codex-message a{color:#69b8ed;overflow-wrap:anywhere}
+.codex-markdown{color:#dce2e4;font:11px/1.55 sans-serif;overflow-wrap:anywhere}
+.codex-markdown h3,.codex-markdown h4,.codex-markdown h5,.codex-markdown h6{margin:12px 0 6px;color:#f1f4f5;font-size:12px;line-height:16px}
+.codex-markdown p{margin:6px 0;color:#dce2e4}
+.codex-markdown ul,.codex-markdown ol{margin:6px 0;padding-left:20px;color:#dce2e4}
+.codex-markdown li{margin:5px 0}
+.codex-markdown code{padding:1px 4px;border-radius:3px;background:#071014;color:#d9e4e7;font:10px/1.45 monospace;user-select:text;-webkit-user-select:text}
+.codex-markdown pre{margin:8px 0;padding:8px;overflow:auto;border:1px solid #40535b;border-radius:5px;background:#071014;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
+.codex-markdown pre code{padding:0;background:transparent}
+.codex-markdown blockquote{margin:8px 0;padding:4px 8px;border-left:2px solid #6d8189;color:#bdc8cb}
+.codex-markdown hr{border:0;border-top:1px solid #40535b}
+.shell-section-title{margin:14px 0 6px;color:#92a0a5;font-size:9px;letter-spacing:.04em}
+.primary-action{border-color:var(--green)!important;color:var(--green)!important;background:#23351d!important}
+.compact-details{margin-top:10px!important}
+#codex-result-actions{margin-top:8px}
+#codex-edit-status[data-state="waiting"]{border-color:#8b7b45;color:#e4cf7a}
+#codex-edit-status[data-state="ready"],#codex-edit-status[data-state="merged"]{border-color:#5f7f46;color:#b6e35f}
+#codex-edit-status[data-state="failed"],#codex-edit-status[data-state="error"]{border-color:#8d4946;color:#ff918b}
 
 .shell-pane .ai-help{padding:0}
 .ai-help summary{min-height:44px;padding:12px;cursor:pointer;line-height:20px}
