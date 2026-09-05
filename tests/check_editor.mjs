@@ -23,3 +23,12 @@ if (!manifest.includes('android.permission.INTERNET')) throw new Error('INTERNET
 if (!manifest.includes('FileProvider')) throw new Error('APK update FileProvider is missing');
 
 console.log('editor shell checks: OK');
+
+const gradle = read('app/build.gradle');
+const github = read('app/src/main/java/com/pch1000/hmieditor/GitHubService.java');
+if (!gradle.includes('buildConfig true')) throw new Error('BuildConfig build fix missing');
+if (!editor.includes('new ResizeObserver(fit).observe(stage)')) throw new Error('Stage resize observer missing');
+if (html.includes('id="update-repo"') || shell.includes('state.updateRepo')) throw new Error('APK repo must not be user selectable');
+if (!github.includes('UPDATE_REPO = "Coal56AB/PCH1000-HMI-Editor-Build"')) throw new Error('Wrong APK repository');
+if (!manifest.includes('android:icon="@mipmap/ic_launcher"')) throw new Error('Custom launcher icon missing');
+console.log('1.2.1 build, icon and update-source checks: OK');

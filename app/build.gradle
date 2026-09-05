@@ -15,8 +15,18 @@ android {
         applicationId 'com.pch1000.hmieditor'
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName '1.2.0'
+        versionCode 5
+        versionName '1.2.2'
+        // Public app identifier, never a token or client secret.
+        def oauthClientId = providers.gradleProperty('githubOAuthClientId').orElse(providers.environmentVariable('GITHUB_OAUTH_CLIENT_ID')).getOrElse('Ov23liZhW4JlhvBxx6zs')
+        if (!(oauthClientId ==~ /[A-Za-z0-9.\-]*/)) {
+            throw new GradleException('Invalid GitHub OAuth Client ID')
+        }
+        buildConfigField 'String', 'GITHUB_OAUTH_CLIENT_ID', '"' + oauthClientId + '"'
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {

@@ -199,6 +199,18 @@ public final class MainActivity extends Activity {
             if (github != null) github.request(requestId, method, path, jsonBody);
         }
 
+        @JavascriptInterface public void checkAppUpdate(String requestId) {
+            if (github != null) github.checkAppUpdate(requestId);
+        }
+
+        @JavascriptInterface public void copyGithubDeviceCode(String code) {
+            if (github != null) github.copyDeviceCode(code);
+        }
+
+        @JavascriptInterface public void cancelGithubDeviceFlow() {
+            if (github != null) github.cancelDeviceFlow();
+        }
+
         @JavascriptInterface public void startGithubDeviceFlow(String requestId, String clientId) {
             if (github != null) github.startDeviceFlow(requestId, clientId);
         }
@@ -220,6 +232,7 @@ public final class MainActivity extends Activity {
                 JSONObject value = new JSONObject();
                 value.put("versionName", BuildConfig.VERSION_NAME);
                 value.put("versionCode", BuildConfig.VERSION_CODE);
+                value.put("githubOAuthClientId", BuildConfig.GITHUB_OAUTH_CLIENT_ID);
                 return value.toString();
             } catch (Exception ignored) {
                 return "{}";
@@ -482,6 +495,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (github != null) github.dispose();
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidEditor");
             webView.destroy();

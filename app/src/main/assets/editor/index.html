@@ -148,11 +148,40 @@
 
       <div class="shell-pane" data-shell-pane="github">
         <div id="github-auth-off">
-          <p>Для входа через GitHub нужен Client ID OAuth-приложения с включённым Device Flow. Секрет в APK не хранится.</p>
-          <label>GitHub OAuth Client ID<input id="github-client-id" type="text" autocomplete="off" placeholder="Iv1…"></label>
+          <p>Вход выполняется на сайте GitHub: там вводишь логин и пароль или используешь уже открытый аккаунт. Приложение не получает твой пароль.</p>
+          <p id="github-login-status"></p>
           <button id="github-login" class="wide-action">ВОЙТИ ЧЕРЕЗ GITHUB</button>
-          <details><summary>Вход с токеном</summary><label>Personal access token<input id="github-token" type="password" autocomplete="off"></label><button id="github-token-save">СОХРАНИТЬ ТОКЕН</button></details>
-          <div id="device-code" class="device-code hidden"></div>
+          <details id="github-oauth-setup"><summary>Разовая настройка входа (для разработчика)</summary>
+            <p>Для собственных сборок можно зарегистрировать другое OAuth-приложение. В обычной сборке Client ID уже встроен и пользователю вводить его не нужно.</p>
+            <ol>
+              <li>Открой регистрацию OAuth-приложения кнопкой ниже.</li>
+              <li>Название: PCH1000 HMI Editor. Homepage URL: адрес репозитория Android-приложения. Callback URL: https://localhost (в Device Flow не используется).</li>
+              <li>Включи Enable Device Flow. Зарегистрируй приложение.</li>
+              <li>Скопируй Client ID в поле ниже. Это не логин и не Client Secret. Секрет создавать и передавать не надо.</li>
+            </ol>
+            <button data-external="https://github.com/settings/applications/new">ОТКРЫТЬ РЕГИСТРАЦИЮ НА GITHUB</button>
+            <label>Client ID приложения<input id="github-client-id" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Client ID со страницы OAuth-приложения"></label>
+            <button id="github-client-save">СОХРАНИТЬ НАСТРОЙКУ</button>
+          </details>
+          <details><summary>Другой способ: персональный токен</summary>
+            <p>Токен — ключ доступа вместо пароля. Он нужен только если вход через сайт ещё не настроен. Не отправляй его в чат и не добавляй в исходники.</p>
+            <ol>
+              <li>На GitHub открой Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.</li>
+              <li>Выбери срок действия, владельца и только нужные репозитории.</li>
+              <li>Repository permissions: Contents — Read and write; Pull requests — Read and write. Issues — Read and write, если GitHub требует это для используемых комментариев.</li>
+              <li>Скопируй сгенерированный токен и вставь ниже. GitHub показывает его только один раз.</li>
+            </ol>
+            <p>Такой токен ограничен выбранными репозиториями. Для создания нового репозитория используй сайт GitHub или настроенный OAuth-вход; затем при необходимости обнови доступ токена.</p>
+            <button data-external="https://github.com/settings/personal-access-tokens/new">СОЗДАТЬ ТОКЕН НА GITHUB</button>
+            <label>Токен доступа<input id="github-token" type="password" autocomplete="off" placeholder="github_pat_… или ghp_…"></label><button id="github-token-save">ПОДКЛЮЧИТЬ С ТОКЕНОМ</button>
+          </details>
+          <div id="device-code" class="device-code hidden" aria-live="polite">
+            <span>Одноразовый код для сайта GitHub</span>
+            <strong id="github-user-code"></strong>
+            <button id="github-code-open">СКОПИРОВАТЬ КОД И ОТКРЫТЬ GITHUB</button>
+            <div class="two-actions"><button id="github-code-copy">КОПИРОВАТЬ КОД</button><button id="github-code-cancel">ОТМЕНА</button></div>
+            <p>На сайте войди в аккаунт, вставь код и разреши доступ. Если сайт сообщил об успехе — вернись сюда и дождись подключения.</p>
+          </div>
         </div>
         <div id="github-auth-on" class="hidden">
           <div class="shell-status"><span id="github-user">GitHub подключён</span><button id="github-logout">ВЫЙТИ</button></div>
@@ -163,9 +192,6 @@
           <label>Сообщение коммита<input id="github-message" type="text" value="Update PCH-1000 HMI"></label>
           <button id="github-push" class="wide-action">COMMIT И PUSH</button>
           <details><summary>Создать репозиторий</summary><label>Название<input id="new-repo-name" type="text" value="PCH1000-HMI-C"></label><label class="shell-check"><input id="new-repo-private" type="checkbox"> Приватный</label><button id="create-repo">СОЗДАТЬ</button></details>
-          <label>Репозиторий обновлений APK<select id="update-repo"></select></label>
-          <button id="check-update" class="wide-action">ПРОВЕРИТЬ ОБНОВЛЕНИЕ APK</button>
-          <div id="update-result"></div>
         </div>
       </div>
 
@@ -187,6 +213,9 @@
         <p>При выключенной галочке функции ИИ скрыты и ничего в Codex не отправляется.</p>
         <button id="restart-tour" class="wide-action">ПОКАЗАТЬ ОБУЧЕНИЕ ЕЩЁ РАЗ</button>
         <div class="shell-status" id="app-version"></div>
+        <p>Обновления приложения: Coal56AB/PCH1000-HMI-Editor-Build. Источник закреплён в APK, вход в GitHub для проверки не нужен.</p>
+        <button id="check-update" class="wide-action">ПРОВЕРИТЬ ОБНОВЛЕНИЕ APK</button>
+        <div id="update-result"></div>
       </div>
       <footer id="shell-message"></footer>
     </section>

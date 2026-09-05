@@ -8,3 +8,15 @@
 .tour{position:fixed;z-index:60;inset:0;background:transparent;pointer-events:auto}.tour-spot{position:fixed;border:2px solid var(--green);border-radius:8px;box-shadow:0 0 0 9999px #020609d9,0 0 18px #87bd2088;pointer-events:none;transition:.18s}.tour-card{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));margin:auto;max-width:440px;padding:13px;border:1px solid #607279;border-radius:9px;background:#142229;box-shadow:0 8px 30px #000}.tour-card small,.tour-card strong{display:block}.tour-card small{color:var(--green);font-size:8px}.tour-card strong{margin-top:3px;font-size:14px}.tour-card p{margin:7px 0 12px;color:#c5ced0;font-size:11px;line-height:16px}.tour-card>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tour-card button{height:38px;font-size:9px;font-weight:800}
 body.comparing .hardware{visibility:hidden}body.comparing main{height:calc(100% - 52px)}body.comparing .interaction{pointer-events:none!important}
 @media (orientation:landscape){.shell-card{max-width:620px}.compare-bar{left:50%;transform:translateX(-50%);width:min(620px,92vw)}.tour-card{left:auto;right:12px;width:340px}}
+
+/* Coach marks have their own layout space, never cover the highlighted control. */
+body.tour-active{padding-bottom:var(--tour-reserve,180px)}
+.tour{pointer-events:none}
+.tour-card{pointer-events:auto;max-height:42dvh;overflow:auto;touch-action:pan-y;overscroll-behavior:contain}
+.tour-spot{transition:none}
+body.tour-active .properties{bottom:var(--tour-reserve,180px);max-height:calc(100dvh - 52px - var(--tour-reserve,180px))}
+.shell-pane ol{padding-left:20px;font-size:11px;line-height:17px;color:#bcc6c9;overflow-wrap:anywhere}
+.shell-pane li{margin:8px 0}
+.shell-pane details p{margin-top:10px}
+.shell-card>header,.shell-tabs,#shell-message{flex-shrink:0}
+@media (orientation:landscape){body.tour-active .hardware{bottom:var(--tour-reserve,180px)}}

@@ -150,6 +150,9 @@ $('#mode-toggle').onclick=function(){setMode(mode==='edit'?'view':'edit')};
 $('#drawer-toggle').onclick=function(){document.body.classList.toggle('properties-closed');requestAnimationFrame(fit)};
 $('#properties-collapse').onclick=function(){document.body.classList.toggle('properties-closed');requestAnimationFrame(fit)};
 window.addEventListener('resize',fit);if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
+// Layout must not depend on iframe load timing or renderer readiness.
+if(window.ResizeObserver)new ResizeObserver(fit).observe(stage);
+requestAnimationFrame(fit);
 
 function frameAction(objectName,method,arg){try{var object=win()[objectName];if(!object||typeof object[method]!=='function')throw new Error('not ready');object[method](arg);setTimeout(function(){syncRuntimeScene(true)},40)}catch(e){toast('Симулятор ещё загружается')}}
 $('#charge-control').onclick=function(){frameAction('Sim','toggleCharge')};
@@ -238,8 +241,17 @@ window.HmiEditor={
   selectedContext:function(){return{key:selectedKey,name:selectedEl?niceName(selectedEl,selectedKey):'',scene:currentScene,sceneName:sceneLabel(currentScene)}}
 };
 
-frame.addEventListener('load',function(){
-  baselines=new Map();var timer=setInterval(function(){if(win().CStripPreview&&win().CStripPreview.ready&&win().qaApplyScenario&&win().qaCurrentScenario){clearInterval(timer);try{var stored=JSON.parse(localStorage.getItem('pch1000-hmi-editor-project-v1')||'null');if(stored&&stored.format===project.format)project=stored}catch(e){}syncRuntimeScene(true);fit();save()}},80)
-});
+var rendererReadyTimer=0;
+function initializeRenderer(){
+  fit();clearInterval(rendererReadyTimer);baselines=new Map();
+  function ready(){
+    if(!win().CStripPreview||!win().CStripPreview.ready||!win().qaApplyScenario||!win().qaCurrentScenario)return false;
+    try{var stored=JSON.parse(localStorage.getItem('pch1000-hmi-editor-project-v1')||'null');if(stored&&stored.format===project.format)project=stored}catch(e){}
+    syncRuntimeScene(true);fit();save();return true;
+  }
+  if(!ready())rendererReadyTimer=setInterval(function(){if(ready())clearInterval(rendererReadyTimer)},80);
+}
+frame.addEventListener('load',initializeRenderer);
+initializeRenderer();
 setInterval(function(){if(!loading&&win()&&win().CStripPreview)syncRuntimeScene(false)},300);
 })();

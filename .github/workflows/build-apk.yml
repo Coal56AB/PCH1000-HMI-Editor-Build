@@ -21,6 +21,12 @@ jobs:
       - run: node --check app/src/main/assets/editor/editor.js
       - run: node --check app/src/main/assets/editor/app-shell.js
       - run: node tests/check_editor.mjs
+      - run: node tests/check_geometry.mjs
+      - run: node tests/check_github_auth.mjs
+      - name: Test GitHub device authorization recovery
+        run: |
+          javac -encoding UTF-8 -d /tmp/pch-auth-tests app/src/main/java/com/pch1000/hmieditor/GitHubDevicePoller.java tests/GitHubDevicePollerTest.java
+          java -cp /tmp/pch-auth-tests com.pch1000.hmieditor.GitHubDevicePollerTest
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
