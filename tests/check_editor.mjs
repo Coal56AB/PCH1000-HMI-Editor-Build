@@ -6,13 +6,18 @@ const html = read('app/src/main/assets/editor/index.html');
 const editor = read('app/src/main/assets/editor/editor.js');
 const shell = read('app/src/main/assets/editor/app-shell.js');
 const edits = read('app/src/main/assets/editor/codex-edits.js');
-if (!html.includes('<script src="codex-edits.js"></script>') || !shell.includes('CodexEdits.init(')) throw new Error('Codex edit module is not connected');
+const markdown = read('app/src/main/assets/editor/codex-markdown.js');
+const cleanup = read('.github/workflows/cleanup-codex-branches.yml');
+if (!html.includes('<script src="codex-markdown.js"></script>') || !html.includes('<script src="codex-edits.js"></script>') || !shell.includes('CodexEdits.init(')) throw new Error('Codex edit modules are not connected');
+if (!markdown.includes('CodexMarkdown') || !edits.includes('CodexMarkdown.render')) throw new Error('Safe Markdown rendering is not connected');
+if (!cleanup.includes("startsWith(github.head_ref, 'codex/')") || !cleanup.includes('deleteRef')) throw new Error('Codex branch cleanup workflow is missing');
 const manifest = read('app/src/main/AndroidManifest.xml');
 
 const requiredIds = [
   'mode-toggle', 'export-dialog', 'export-confirm', 'comparison-canvas', 'compare-bar', 'shell-modal',
   'choose-folder', 'github-login', 'github-repo', 'codex-start', 'ai-beta', 'tour',
-  'codex-edit-status', 'codex-edit-conversation', 'codex-edit-open', 'codex-edit-load'
+  'codex-edit-status', 'codex-edit-conversation', 'codex-edit-open', 'codex-edit-load',
+  'codex-edit-issue', 'codex-followup-text', 'codex-result-actions'
 ];
 for (const id of requiredIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Missing #${id}`);

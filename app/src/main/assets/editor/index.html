@@ -225,10 +225,11 @@
             <p>Включать Code review для обычных обращений через <code>@codex</code> не требуется. Компьютер включать не нужно — работа выполняется в облаке.</p>
             <p><strong>В приложении:</strong> войди в GitHub, выбери тот же репозиторий и нужную ветку. В настройках отметь «Включить ИИ», затем открой вкладку «ИИ». В режиме «Спросить» приложение само добавляет <code>@codex</code> и отправляет вопрос по исходникам выбранной ветки.</p>
             <p>Для вопросов нужен доступ к исходникам и право создавать Issues и комментарии. Для режима «Изменить C-код» также нужны права на запись в репозиторий и Pull requests.</p>
+            <p><strong>Как публикуется изменение:</strong> Codex готовит код в облачной задаче. Когда появится ответ, открой задачу, проверь вкладку Diff и нажми <code>Open pull request</code>. После этого приложение само найдёт PR. Обычный <code>git push</code> из контейнера Codex не требуется; добавлять GitHub-токен в запрос или окружение не надо.</p>
             <p>Ответ может занять несколько минут. Если реакции нет, проверь доступ Codex именно к выбранному репозиторию. Если бот прислал ссылку на облачный чат, открой её из сообщения.</p>
           </div>
         </details>
-        <label>Режим<select id="codex-mode"><option value="ask">Спросить</option><option value="edit">Изменить C-код</option></select></label>
+        <label>Что сделать<select id="codex-mode"><option value="ask">Задать вопрос</option><option value="edit">Изменить код</option></select></label>
         <div id="codex-ask-panel">
           <p>Задай вопрос по исходникам. Вопрос и ответ сохраняются в обсуждении GitHub. Codex получает указание только объяснить код, без правок.</p>
           <label>Вопрос<textarea id="codex-question" rows="4" placeholder="Где задаются названия вкладок графиков: в HMI или они приходят от контроллера?"></textarea></label>
@@ -244,20 +245,28 @@
           <p>Нужно подключить Codex к выбранному репозиторию. Ответ может занять несколько минут. Если бот прислал ссылку на облачный чат, открой её из сообщения.</p>
         </div>
         <div id="codex-edit-panel" class="hidden">
-        <p>Приложение создаст отдельную ветку и черновик PR. Ответ Codex и опубликованные изменения появятся ниже. Основная ветка изменится после нажатия «Принять и объединить».</p>
-        <label>Что изменить в C-коде<textarea id="codex-task" rows="5" placeholder="Например: изменить форму выбранной рамки и добавить скругление…"></textarea></label>
+        <p>Приложение создаст задачу в GitHub и запустит Codex. Когда он закончит, открой облачную задачу и опубликуй предложенный PR. После этого приложение покажет сравнение и сможет принять результат.</p>
+        <label>Задача для Codex<textarea id="codex-task" rows="5" placeholder="Например: изменить форму выбранной рамки и добавить скругление…"></textarea></label>
         <div id="codex-context" class="shell-status">Элемент не выбран</div>
-        <button id="codex-start" class="wide-action">СОЗДАТЬ ВЕТКУ И ОТПРАВИТЬ @CODEX</button>
-        <label>Активный PR<input id="codex-pr" type="number" min="1" placeholder="Номер PR"></label>
+        <button id="codex-start" class="wide-action primary-action">ОТПРАВИТЬ ЗАДАЧУ CODEX</button>
         <div id="codex-edit-status" class="shell-status" role="status" aria-live="polite">Создай запрос или укажи номер существующего PR.</div>
+        <h3 class="shell-section-title">Ход работы и ответ Codex</h3>
         <div id="codex-edit-conversation" class="codex-conversation" role="log" aria-live="polite"></div>
-        <button id="codex-edit-open" class="wide-action">ОТКРЫТЬ PR В GITHUB</button>
-        <div class="two-actions"><button id="codex-refresh">ПРОВЕРИТЬ</button><button id="codex-compare">СРАВНИТЬ</button></div>
-        <button id="codex-followup" class="wide-action">ОТПРАВИТЬ УТОЧНЕНИЕ В ЭТОТ PR</button>
-        <button id="codex-merge" class="wide-action" disabled>ПРИНЯТЬ И ОБЪЕДИНИТЬ</button>
-        <button id="codex-edit-load" class="wide-action" disabled>ЗАГРУЗИТЬ РЕЗУЛЬТАТ ПОСЛЕ СЛИЯНИЯ</button>
-        <button id="codex-reject" class="wide-action danger">ОТКЛОНИТЬ И УДАЛИТЬ ВЕТКУ</button>
-        <pre id="code-diff" class="code-diff"></pre>
+        <div class="two-actions"><button id="codex-refresh">ОБНОВИТЬ</button><button id="codex-edit-open">ОТКРЫТЬ В GITHUB</button></div>
+        <label id="codex-followup-label" class="hidden">Уточнение для Codex<textarea id="codex-followup-text" rows="3" placeholder="Что исправить или проверить дополнительно?"></textarea></label>
+        <button id="codex-followup" class="wide-action hidden">ОТПРАВИТЬ УТОЧНЕНИЕ</button>
+        <section id="codex-result-actions" class="hidden">
+          <button id="codex-compare" class="wide-action">СРАВНИТЬ БЫЛО / СТАЛО</button>
+          <button id="codex-merge" class="wide-action primary-action" disabled>ПРИНЯТЬ И ОБЪЕДИНИТЬ</button>
+          <button id="codex-edit-load" class="wide-action hidden" disabled>ЗАГРУЗИТЬ РЕЗУЛЬТАТ</button>
+          <details class="compact-details"><summary>Посмотреть технический diff</summary><pre id="code-diff" class="code-diff"></pre></details>
+        </section>
+        <button id="codex-reject" class="wide-action danger hidden">ЗАКРЫТЬ ЗАДАЧУ</button>
+        <details class="compact-details"><summary>Открыть существующую задачу или PR</summary>
+          <label>Номер Issue<input id="codex-edit-issue" type="number" min="1" placeholder="Номер Issue"></label>
+          <label>Номер PR<input id="codex-pr" type="number" min="1" placeholder="Номер PR"></label>
+          <button id="codex-edit-select">ОТКРЫТЬ</button>
+        </details>
         </div>
       </div>
 
@@ -282,6 +291,7 @@
             <p>Включать Code review для обычных обращений через <code>@codex</code> не требуется. Компьютер включать не нужно — работа выполняется в облаке.</p>
             <p><strong>В приложении:</strong> войди в GitHub, выбери тот же репозиторий и нужную ветку. В настройках отметь «Включить ИИ», затем открой вкладку «ИИ». В режиме «Спросить» приложение само добавляет <code>@codex</code> и отправляет вопрос по исходникам выбранной ветки.</p>
             <p>Для вопросов нужен доступ к исходникам и право создавать Issues и комментарии. Для режима «Изменить C-код» также нужны права на запись в репозиторий и Pull requests.</p>
+            <p><strong>Как публикуется изменение:</strong> Codex готовит код в облачной задаче. Когда появится ответ, открой задачу, проверь вкладку Diff и нажми <code>Open pull request</code>. После этого приложение само найдёт PR. Обычный <code>git push</code> из контейнера Codex не требуется; добавлять GitHub-токен в запрос или окружение не надо.</p>
             <p>Ответ может занять несколько минут. Если реакции нет, проверь доступ Codex именно к выбранному репозиторию. Если бот прислал ссылку на облачный чат, открой её из сообщения.</p>
           </div>
         </details>
@@ -305,9 +315,9 @@
   </div>
   <script src="c-generator.js"></script>
   <script src="editor.js"></script>
+  <script src="codex-markdown.js"></script>
   <script src="codex-questions.js"></script>
 <script src="codex-edits.js"></script>
 <script src="app-shell.js"></script>
 </body>
 </html>
-

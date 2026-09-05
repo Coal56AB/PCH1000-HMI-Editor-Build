@@ -9,10 +9,7 @@ function controls(){['codex-ask-send','codex-ask-new','codex-thread-load'].forEa
 function contextChanged(){if(!deps)return;var next=deps.context().repo;if(next===repo)return;repo=next;var saved=readThread(repo);thread=saved.number;threadPath=saved.path;generation++;lastSignature='';$('codex-conversation').textContent='';status(thread?'Обсуждение #'+thread:'Напиши первый вопрос.');controls()}
 function active(){return deps&&deps.enabled()&&!document.hidden&&!$('shell-modal').classList.contains('hidden')&&$('codex-mode').value==='ask'&&$('codex-ask-panel').closest('[data-shell-pane]').classList.contains('active')}
 function allowed(){if(!deps.enabled())throw new Error('Включи Codex-бета и войди в GitHub');if(!repo)throw new Error('Выбери репозиторий C-проекта')}
-function safeExternal(url){try{var u=new URL(url);return u.protocol==='https:'&&(u.hostname==='github.com'||u.hostname==='chatgpt.com')?u.href:null}catch(e){return null}}
-function addMessage(author,body,date){var item=document.createElement('article'),head=document.createElement('header'),text=document.createElement('pre');item.className='codex-message';head.textContent=author+(date?' · '+new Date(date).toLocaleString():'');text.textContent=body||'';item.appendChild(head);item.appendChild(text);
-  var links=String(body||'').match(/https:\/\/[^\s<>"\])]+/g)||[];Array.from(new Set(links)).forEach(function(raw){var url=safeExternal(raw);if(!url)return;var a=document.createElement('a');a.href=url;a.textContent=url;a.onclick=function(e){e.preventDefault();deps.openExternal(url)};item.appendChild(a)});$('codex-conversation').appendChild(item)
-}
+function addMessage(author,body,date){var item=document.createElement('article'),head=document.createElement('header'),text=document.createElement('div');item.className='codex-message';head.textContent=author+(date?' · '+new Date(date).toLocaleString():'');CodexMarkdown.render(text,body||'',deps.openExternal);item.appendChild(head);item.appendChild(text);$('codex-conversation').appendChild(item)}
 async function refresh(){
   contextChanged();if(!thread||refreshing||!deps.enabled())return;refreshing=true;
   var version=generation,number=thread,name=repo;

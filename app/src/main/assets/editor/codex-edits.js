@@ -1,128 +1,68 @@
 (function(){
 'use strict';
 var $=function(id){return document.getElementById(id)},deps=null,repo='',generation=0,busy=false,refreshing=false,timer=0,snapshot=null,signature='';
-function status(text,error){$('codex-edit-status').textContent=text;$('codex-edit-status').style.color=error?'#ff756e':''}
-function key(name){return 'pch-codex-edit-pr:'+name}
-function remember(name,number){localStorage.setItem(key(name),String(number));if(deps&&name===deps.context().repo){$('codex-pr').value=number||'';deps.selected(number)}}
+function status(text,error,state){var el=$('codex-edit-status');el.textContent=text||'';el.style.color=error?'#ff756e':'';el.dataset.state=state||(error?'error':'')}
+function key(name){return 'pch-codex-edit-selection:'+name}
+function readSaved(name){try{return JSON.parse(localStorage.getItem(key(name))||'{}')}catch(e){return{}}}
+function save(selection){if(!selection||!selection.repo)return;localStorage.setItem(key(selection.repo),JSON.stringify({issue:Number(selection.issue)||0,pr:Number(selection.pr)||0,requestedBranch:selection.requestedBranch||'',base:selection.base||''}))}
+function select(selection){selection=selection||{};$('codex-edit-issue').value=Number(selection.issue)||'';$('codex-pr').value=Number(selection.pr)||'';save(Object.assign({repo:repo},selection));if(deps)deps.selected(Number(selection.pr)||0)}
+function rememberTask(job){if(!job||!job.repo)return;var next={repo:job.repo,issue:job.issue,pr:0,requestedBranch:job.branch,base:job.base};save(next);if(deps&&job.repo===deps.context().repo){generation++;snapshot=null;signature='';select(next);controls();refresh()}}
+function rememberPr(number){var selected=readSaved(repo);selected.repo=repo;selected.pr=Number(number)||0;select(selected)}
 function contextChanged(){
   if(!deps||repo===deps.context().repo)return;
   repo=deps.context().repo;generation++;snapshot=null;signature='';
-  var saved=localStorage.getItem(key(repo));
-  remember(repo,Number(saved)||0);$('codex-edit-conversation').textContent='';$('code-diff').textContent='';
-  status('Создай запрос или укажи номер существующего PR.');controls();
+  var selected=readSaved(repo),legacy=Number(localStorage.getItem('pch-codex-edit-pr:'+repo)||0);
+  if(!selected.pr&&legacy)selected.pr=legacy;
+  select(Object.assign({repo:repo},selected));$('codex-edit-conversation').textContent='';$('code-diff').textContent='';
+  status('Создай новую задачу или открой существующую.');controls();
 }
-function token(){contextChanged();var n=Number($('codex-pr').value);if(!deps.enabled())throw new Error('Включи ИИ и войди в GitHub');if(!repo)throw new Error('Выбери репозиторий');if(!Number.isSafeInteger(n)||n<1)throw new Error('Укажи номер PR');return{repo:repo,number:n,version:generation,branch:deps.context().branch}}
-function current(t){return t.version===generation&&t.repo===deps.context().repo&&t.number===Number($('codex-pr').value)&&t.branch===deps.context().branch}
-function requireCurrent(t){if(!current(t)||!deps.enabled())throw new Error('Контекст изменился. Обнови выбранный PR перед действием.')}
+function token(){contextChanged();var issue=Number($('codex-edit-issue').value),pr=Number($('codex-pr').value);if(!deps.enabled())throw new Error('Включи ИИ и войди в GitHub');if(!repo)throw new Error('Выбери репозиторий');if((!Number.isSafeInteger(issue)||issue<1)&&(!Number.isSafeInteger(pr)||pr<1))throw new Error('Создай задачу или укажи номер Issue/PR');var saved=readSaved(repo);return{repo:repo,issue:Number.isSafeInteger(issue)&&issue>0?issue:0,pr:Number.isSafeInteger(pr)&&pr>0?pr:0,requestedBranch:saved.requestedBranch||'',base:saved.base||deps.context().branch,version:generation,branch:deps.context().branch}}
+function current(t){return t&&t.version===generation&&t.repo===deps.context().repo&&t.issue===(Number($('codex-edit-issue').value)||0)&&t.pr===(Number($('codex-pr').value)||0)&&t.branch===deps.context().branch}
+function requireCurrent(t){if(!current(t)||!deps.enabled())throw new Error('Контекст изменился. Обнови задачу перед действием.')}
 function active(){return deps&&deps.enabled()&&!document.hidden&&!$('shell-modal').classList.contains('hidden')&&$('codex-mode').value==='edit'&&$('codex-edit-panel').closest('[data-shell-pane]').classList.contains('active')}
 function controls(){
-  var valid=snapshot&&current(snapshot.token),canMerge=valid&&snapshot.pr.state==='open'&&snapshot.changes.length>0&&!snapshot.waiting&&snapshot.pr.mergeable!==false;
-  $('codex-merge').disabled=busy||!canMerge;
-  ['codex-followup','codex-reject','codex-compare'].forEach(function(id){$(id).disabled=busy});
-  $('codex-edit-open').disabled=!Number($('codex-pr').value);
-  $('codex-edit-load').disabled=busy||!valid||!snapshot.pr.merged;
+  var valid=snapshot&&current(snapshot.token),hasTask=Number($('codex-edit-issue').value)||Number($('codex-pr').value),hasPr=valid&&snapshot.pr;
+  var canMerge=hasPr&&snapshot.pr.state==='open'&&snapshot.changes.length>0&&!snapshot.waiting&&snapshot.pr.mergeable!==false;
+  $('codex-result-actions').classList.toggle('hidden',!hasPr);$('codex-reject').classList.toggle('hidden',!hasTask);
+  $('codex-followup-label').classList.toggle('hidden',!hasTask);$('codex-followup').classList.toggle('hidden',!hasTask);
+  $('codex-merge').disabled=busy||!canMerge;$('codex-followup').disabled=busy||!hasTask;$('codex-reject').disabled=busy||!hasTask;$('codex-compare').disabled=busy||!hasPr;
+  $('codex-edit-open').disabled=!hasTask;$('codex-edit-load').classList.toggle('hidden',!hasPr||!snapshot.pr.merged);$('codex-edit-load').disabled=busy||!hasPr||!snapshot.pr.merged;
+  $('codex-edit-open').textContent=hasPr?'ОТКРЫТЬ PR В GITHUB':valid&&snapshot.taskUrl?'ОТКРЫТЬ ЗАДАЧУ CODEX':'ОТКРЫТЬ ISSUE В GITHUB';
+  $('codex-reject').textContent=hasPr?'ОТКЛОНИТЬ И УДАЛИТЬ ВЕТКУ':'ЗАКРЫТЬ ЗАДАЧУ';
 }
-async function pages(path){var result=[],batch,page=1;do{batch=await deps.api('GET',path+'?per_page=100&page='+page++);result=result.concat(batch)}while(batch.length===100);return result}
-function bot(c){return /^(chatgpt-codex-connector|codex)\[bot\]$/.test(c.user&&c.user.login||'')}
-function analyze(pr,files,comments){
-  var request=-1,reply=-1;
-  comments.forEach(function(c,i){if(!bot(c)&&/@codex\b/i.test(c.body||''))request=i;if(bot(c)&&String(c.body||'').trim())reply=i});
-  var changes=files.filter(function(f){return !/^\.codex\/tasks\//.test(f.filename)}),answered=reply>request,waiting=request>=0&&!answered,text;
-  if(pr.merged)text='Изменения объединены в '+pr.base.ref+'. Можно загрузить результат.';
-  else if(pr.state==='closed')text='PR закрыт без слияния.';
-  else if(answered&&!changes.length)text='Ответ Codex получен, но изменения проекта в этот PR не опубликованы. Открой ответ и задачу ниже.';
-  else if(waiting)text='Запрос отправлен. Нового ответа Codex пока нет.'+(changes.length?' В PR есть изменения; они могут относиться к предыдущему запросу.':' Изменений проекта в PR пока нет.');
-  else if(changes.length)text=(answered?'Ответ Codex получен. ':'')+'В PR опубликованы изменения: '+changes.length+' файлов. Проверь ответ и сравнение перед принятием.';
-  else text='Изменений проекта в PR пока нет.';
-  if(pr.state==='open')text+=' '+(pr.draft?'Черновик будет снят при принятии. ':'')+(pr.mergeable===false?'Есть конфликт с основной веткой. ':'')+'Точный прогресс облачной задачи GitHub не передаёт.';
-  return{changes:changes,waiting:waiting,text:text};
-}
-function addMessage(c){
-  var item=document.createElement('article'),head=document.createElement('header'),body=document.createElement('pre');item.className='codex-message';
-  head.textContent=(c.user&&c.user.login||'GitHub')+(c.created_at?' · '+new Date(c.created_at).toLocaleString():'');body.textContent=c.body||'';item.appendChild(head);item.appendChild(body);
-  var links=String(c.body||'').match(/https:\/\/[^\s<>"\])]+/g)||[];
-  Array.from(new Set(links)).forEach(function(raw){try{var url=new URL(raw);if(url.protocol!=='https:'||!['github.com','chatgpt.com'].includes(url.hostname))return;var a=document.createElement('a');a.href=url.href;a.textContent=url.hostname==='chatgpt.com'?'ОТКРЫТЬ ЗАДАЧУ CODEX':url.href;a.onclick=function(e){e.preventDefault();deps.openExternal(url.href)};item.appendChild(a)}catch(ignore){}});
-  $('codex-edit-conversation').appendChild(item);
-}
-function render(s){
-  if(!current(s.token))return;snapshot=s;remember(s.token.repo,s.pr.number);
-  status('PR #'+s.pr.number+' · '+s.text+' · обновлено '+new Date().toLocaleTimeString());
-  var next=JSON.stringify([s.token.repo,s.pr.number,s.pr.body,s.comments]);
-  if(next!==signature){var box=$('codex-edit-conversation'),bottom=box.scrollHeight-box.scrollTop-box.clientHeight<30;box.textContent='';addMessage(s.pr);s.comments.forEach(addMessage);if(bottom)box.scrollTop=box.scrollHeight;signature=next}
-  $('code-diff').textContent=s.files.map(function(f){return f.filename+'  +'+f.additions+' −'+f.deletions+'\n'+(f.patch||'(полный diff доступен в GitHub)')}).join('\n\n');controls();
+async function pages(path,maxPages){var result=[],batch,page=1,join=path.indexOf('?')>=0?'&':'?',limit=maxPages||20;do{batch=await deps.api('GET',path+join+'per_page=100&page='+page++);result=result.concat(batch)}while(batch.length===100&&page<=limit);return result}
+function bot(c){return /^(chatgpt-codex-connector|codex)(?:\[bot\])?$/.test(c.user&&c.user.login||'')}
+function taskUrl(comments){var urls=[];comments.forEach(function(c){var found=String(c.body||'').match(/https:\/\/chatgpt\.com\/[^\s<>"'\])]+/g)||[];urls=urls.concat(found)});return urls.length?urls[urls.length-1]:''}
+function linkedPr(repoName,comments){var escaped=repoName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),rx=new RegExp('https://github\\.com/'+escaped+'/pull/(\\d+)','ig'),number=0;comments.forEach(function(c){var match;while((match=rx.exec(String(c.body||''))))number=Number(match[1])});return number}
+function addMessage(c){var item=document.createElement('article'),head=document.createElement('header'),body=document.createElement('div');item.className='codex-message';body.className='codex-markdown';head.textContent=(c.user&&c.user.login||'GitHub')+(c.created_at?' · '+new Date(c.created_at).toLocaleString():'');item.appendChild(head);item.appendChild(body);CodexMarkdown.render(body,c.body||'',function(url){deps.openExternal(url)});$('codex-edit-conversation').appendChild(item)}
+function renderConversation(s){var all=[];if(s.issue)all.push(s.issue);if(s.pr&&(!s.issue||s.pr.number!==s.issue.number))all.push(s.pr);all=all.concat(s.comments||[]);var next=JSON.stringify(all.map(function(c){return[c.id,c.updated_at,c.body,c.state,c.draft]}));if(next===signature)return;var box=$('codex-edit-conversation'),bottom=box.scrollHeight-box.scrollTop-box.clientHeight<30;box.textContent='';all.forEach(addMessage);if(bottom)box.scrollTop=box.scrollHeight;signature=next}
+function analyzePr(pr,files,comments){var request=-1,reply=-1;comments.forEach(function(c,i){if(!bot(c)&&/@codex\b/i.test(c.body||''))request=i;if(bot(c)&&String(c.body||'').trim())reply=i});var changes=files.filter(function(f){return !/^\.codex\/tasks\//.test(f.filename)}),answered=reply>request,waiting=request>=0&&!answered,text;if(pr.merged)text='Изменения объединены в '+pr.base.ref+'. Результат можно загрузить.';else if(pr.state==='closed')text='PR закрыт без слияния.';else if(answered&&!changes.length)text='Ответ получен, но изменений кода в PR пока нет.';else if(waiting)text='Codex обрабатывает последнее уточнение.';else if(changes.length)text='Codex закончил: в PR изменено файлов — '+changes.length+'. Проверь ответ и сравнение.';else text='PR создан, но изменений проекта пока нет.';if(pr.state==='open'&&pr.mergeable===false)text+=' Есть конфликт с основной веткой.';return{changes:changes,waiting:waiting,text:text}}
+async function findPr(t,comments){var fromComment=linkedPr(t.repo,comments);if(fromComment)return fromComment;try{var timeline=await pages('/repos/'+t.repo+'/issues/'+t.issue+'/timeline',5);for(var i=timeline.length-1;i>=0;i--){var source=timeline[i].source&&timeline[i].source.issue;if(source&&source.pull_request&&source.number)return source.number}}catch(ignore){}var pulls=await pages('/repos/'+t.repo+'/pulls?state=all',5);var reference=new RegExp('(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#'+t.issue+'\\b','i'),found=pulls.find(function(pr){return reference.test(pr.body||'')||(t.requestedBranch&&pr.head&&pr.head.ref===t.requestedBranch)});return found?found.number:0}
+async function renameBranch(t,pr){
+  if(!t.requestedBranch||!pr||pr.state!=='open'||!pr.head||!pr.head.repo||pr.head.repo.full_name!==t.repo||pr.head.ref===t.requestedBranch||!/^codex\//.test(pr.head.ref))return pr;
+  var attempt='pch-codex-rename:'+t.repo+'#'+pr.number,last=localStorage.getItem(attempt);if(last==='done'||(Number(last)&&Date.now()-Number(last)<300000))return pr;
+  try{status('Даю ветке понятное имя…',false,'waiting');await deps.api('POST','/repos/'+t.repo+'/branches/'+encodeURIComponent(pr.head.ref)+'/rename',{new_name:t.requestedBranch});localStorage.setItem(attempt,'done');return await deps.api('GET','/repos/'+t.repo+'/pulls/'+pr.number)}catch(e){localStorage.setItem(attempt,String(Date.now()));return pr}
 }
 async function read(t){
-  var root='/repos/'+t.repo+'/pulls/'+t.number;
-  var data=await Promise.all([deps.api('GET',root),pages(root+'/files'),pages('/repos/'+t.repo+'/issues/'+t.number+'/comments')]);
-  // Do not combine a new head with files loaded from an older head.
-  var latest=await deps.api('GET',root);if(latest.head.sha!==data[0].head.sha||latest.base.sha!==data[0].base.sha)throw new Error('PR обновился во время проверки. Нажми «Проверить» ещё раз.');
-  return Object.assign({token:t,pr:latest,files:data[1],comments:data[2]},analyze(latest,data[1],data[2]));
+  var issue=null,comments=[],pr=null,files=[];
+  if(t.issue){issue=await deps.api('GET','/repos/'+t.repo+'/issues/'+t.issue);comments=await pages('/repos/'+t.repo+'/issues/'+t.issue+'/comments')}
+  var number=t.pr||await findPr(t,comments);if(number&&!t.pr){requireCurrent(t);t.pr=number;rememberPr(number);t.version=generation;t.branch=deps.context().branch}
+  if(number){var root='/repos/'+t.repo+'/pulls/'+number,data=await Promise.all([deps.api('GET',root),pages(root+'/files'),t.issue?Promise.resolve([]):pages('/repos/'+t.repo+'/issues/'+number+'/comments')]);pr=await renameBranch(t,data[0]);if(!t.issue)comments=data[2];var latest=await deps.api('GET',root);if(latest.head.sha!==pr.head.sha||latest.base.sha!==pr.base.sha)throw new Error('PR обновился во время проверки. Нажми «Обновить» ещё раз.');pr=latest;files=data[1]}
+  var url=taskUrl(comments),analysis=pr?analyzePr(pr,files,comments):null,text,state;
+  if(analysis){text='PR #'+pr.number+' · '+analysis.text;state=pr.merged?'merged':pr.state==='closed'?'failed':analysis.waiting?'waiting':'ready'}
+  else{var replied=comments.some(function(c){return bot(c)&&String(c.body||'').trim()});if(issue&&issue.state==='closed'){text='Задача #'+t.issue+' закрыта.';state='failed'}else if(replied){text='Codex закончил. Открой облачную задачу, проверь Diff и нажми Open pull request. После публикации PR появится здесь автоматически.';state='ready'}else{text='Задача #'+t.issue+' отправлена. Codex ещё работает; приложение проверит ответ автоматически.';state='waiting'}}
+  return Object.assign({token:t,issue:issue,pr:pr,files:files,comments:comments,taskUrl:url,text:text,state:state},analysis||{changes:[],waiting:!pr})
 }
-async function refresh(){
-  if(refreshing||busy)return;var t;
-  try{t=token();refreshing=true;var s=await read(t);if(current(t)){render(s);return s}}
-  catch(e){if(!t||current(t)){snapshot=null;controls();status('Не удалось обновить PR: '+e.message,true)}}finally{refreshing=false}
-}
-async function action(work){
-  if(busy)return;var t;
-  try{t=token();t.version=++generation;busy=true;controls();var s=await read(t);requireCurrent(t);render(s);await work(s)}
-  catch(e){if(!t||current(t))status(e.message,true)}finally{busy=false;controls()}
-}
-async function loadMerged(s,sha){
-  try{var text=await deps.fetchProject(s.token.repo,sha||s.pr.merge_commit_sha||s.pr.base.ref);requireCurrent(s.token);deps.importMerged(text,s.token.repo,s.pr.base.ref);status('PR объединён, проект загружен в редактор.')}
-  catch(e){if(current(s.token))status('PR уже объединён, но проект не загружен: '+e.message+'. Нажми «Загрузить результат».',true)}
-}
-function merge(){var shown=snapshot;return action(async function(s){
-  var t=s.token,pr=s.pr,root='/repos/'+t.repo+'/pulls/'+t.number;
-  if(pr.merged){await loadMerged(s);return}
-  if(shown&&shown.token.repo===t.repo&&shown.pr.number===t.number&&shown.pr.head.sha!==pr.head.sha)throw new Error('В PR появились новые коммиты. Сравнение обновлено — проверь его перед принятием.');
-  if(pr.state!=='open')throw new Error('PR закрыт без слияния.');
-  if(!s.changes.length)throw new Error('В PR только описание задачи. Изменения проекта не опубликованы — принимать нечего.');
-  if(s.waiting)throw new Error('На последний запрос ещё нет ответа Codex. Обнови переписку перед принятием.');
-  if(pr.mergeable===false)throw new Error('В PR конфликт с основной веткой. Сначала исправь конфликт.');
-  if(pr.draft){
-    status('Снимаю черновик PR #'+t.number+'…');
-    var result=await deps.api('POST','/graphql',{query:'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}',variables:{id:pr.node_id}});
-    if(result.errors&&result.errors.length)throw new Error('Не удалось снять черновик: '+result.errors.map(function(e){return e.message}).join('; ')+'. Можно открыть PR в GitHub и нажать Ready for review.');
-    if(!result.data||!result.data.markPullRequestReadyForReview||result.data.markPullRequestReadyForReview.pullRequest.isDraft)throw new Error('GitHub не подтвердил снятие черновика. Обнови PR.');
-  }
-  requireCurrent(t);
-  var fresh=await read(t);requireCurrent(t);
-  if(fresh.pr.head.sha!==pr.head.sha||fresh.pr.base.sha!==pr.base.sha||JSON.stringify(fresh.comments)!==JSON.stringify(s.comments))throw new Error('PR или переписка изменились. Проверь новый результат перед принятием.');
-  status('Объединяю PR #'+t.number+'…');
-  var merged=await deps.api('PUT',root+'/merge',{merge_method:'squash',sha:pr.head.sha});
-  if(!merged.merged)throw new Error(merged.message||'GitHub не выполнил слияние.');
-  if(!current(t))return;s.pr.merged=true;s.pr.state='closed';s.pr.merge_commit_sha=merged.sha;snapshot=s;
-  await loadMerged(s,merged.sha);
-})}
-function followup(){return action(async function(s){
-  var text=$('codex-task').value.trim();if(!text)throw new Error('Напиши уточнение');if(s.pr.state!=='open')throw new Error('Этот PR уже закрыт. Создай новый запрос.');
-  await deps.api('POST','/repos/'+s.token.repo+'/issues/'+s.pr.number+'/comments',{body:'@codex '+text+'\n\nПродолжай работу в существующем PR #'+s.pr.number+', ветка '+s.pr.head.ref+'. Опубликуй изменения именно в эту ветку, не создавай новый PR и не выполняй слияние. Ответь по-русски здесь: что изменено, какие проверки прошли и удалось ли опубликовать код. Если публикация не удалась, явно сообщи об этом.'});
-  if(current(s.token)){snapshot=null;status('Уточнение отправлено. Ждём нового ответа Codex.');var next=await read(s.token);render(next)}
-})}
-function activate(){contextChanged();if(active()&&Number($('codex-pr').value))refresh()}
-function init(options){
-  deps=options;
-  // Bind the old global PR number only to the repo selected at migration time.
-  var name=deps.context().repo;if(name&&localStorage.getItem(key(name))===null)localStorage.setItem(key(name),String(Number($('codex-pr').value)||0));
-  $('codex-pr').onchange=function(){generation++;snapshot=null;signature='';$('codex-edit-conversation').textContent='';$('code-diff').textContent='';controls();refresh()};
-  $('codex-refresh').onclick=refresh;$('codex-merge').onclick=merge;$('codex-followup').onclick=followup;
-  $('codex-compare').onclick=function(){return action(async function(s){var text=await deps.fetchProject(s.token.repo,s.pr.head.sha);requireCurrent(s.token);await deps.compare(text)})};
-  $('codex-edit-load').onclick=function(){return action(async function(s){if(!s.pr.merged)throw new Error('PR ещё не объединён.');await loadMerged(s)})};
-  $('codex-edit-open').onclick=function(){try{var t=token();deps.openExternal('https://github.com/'+t.repo+'/pull/'+t.number)}catch(e){status(e.message,true)}};
-  $('codex-reject').onclick=function(){return action(async function(s){
-    if(s.pr.merged)throw new Error('PR уже объединён.');
-    await deps.api('PATCH','/repos/'+s.token.repo+'/pulls/'+s.pr.number,{state:'closed'});
-    var sameRepo=s.pr.head.repo&&s.pr.head.repo.full_name===s.token.repo;
-    if(sameRepo&&s.pr.head.ref!==s.pr.base.ref&&/^codex\/hmi-/.test(s.pr.head.ref)){
-      try{await deps.api('DELETE','/repos/'+s.token.repo+'/git/refs/heads/'+encodeURIComponent(s.pr.head.ref))}
-      catch(e){if(current(s.token))status('PR закрыт, но ветка не удалена: '+e.message,true);return}
-      if(current(s.token))status('PR закрыт, рабочая ветка удалена.');
-    }else if(current(s.token))status('PR закрыт. Ветка сохранена.');
-    if(current(s.token)){s.pr.state='closed';snapshot=s}
-  })};
-  clearInterval(timer);timer=setInterval(function(){if(active()&&!busy&&Number($('codex-pr').value))refresh()},15000);
-  document.addEventListener('visibilitychange',activate);contextChanged();controls();
-}
-window.CodexEdits={init:init,activate:activate,contextChanged:contextChanged,remember:remember,refresh:refresh,analyze:analyze};
+async function cleanupBranch(s){var pr=s.pr;if(!pr||!pr.head||!pr.head.repo||pr.head.repo.full_name!==s.token.repo||pr.head.ref===pr.base.ref||!/^codex\//.test(pr.head.ref))return'';var done='pch-codex-cleaned:'+s.token.repo+'#'+pr.number,failed=done+':failed',last=Number(localStorage.getItem(failed)||0);if(localStorage.getItem(done)||last&&Date.now()-last<300000)return'';try{await deps.api('DELETE','/repos/'+s.token.repo+'/git/refs/heads/'+encodeURIComponent(pr.head.ref));localStorage.setItem(done,'1');return' Ветка '+pr.head.ref+' удалена.'}catch(e){if(e.status===404){localStorage.setItem(done,'1');return''}localStorage.setItem(failed,String(Date.now()));return' Ветка не удалена: '+e.message}}
+async function closeIssue(s){if(!s.token.issue||!s.issue||s.issue.state==='closed')return;await deps.api('PATCH','/repos/'+s.token.repo+'/issues/'+s.token.issue,{state:'closed'})}
+function render(s){if(!current(s.token))return;snapshot=s;if(s.pr&&Number($('codex-pr').value)!==s.pr.number)rememberPr(s.pr.number);status(s.text+' · обновлено '+new Date().toLocaleTimeString(),false,s.state);renderConversation(s);$('code-diff').textContent=(s.files||[]).map(function(f){return f.filename+'  +'+f.additions+' −'+f.deletions+'\n'+(f.patch||'(полный diff доступен в GitHub)')}).join('\n\n');controls()}
+async function refresh(){if(refreshing||busy)return;var t;try{t=token();refreshing=true;var s=await read(t);if(current(t)){if(s.pr&&(s.pr.merged||s.pr.state==='closed')){var note=await cleanupBranch(s);if(note)s.text+=note}render(s);return s}}catch(e){if(!t||current(t)){snapshot=null;controls();status('Не удалось обновить задачу: '+e.message,true)}}finally{refreshing=false}}
+async function action(work){if(busy)return;var t;try{t=token();t.version=++generation;busy=true;controls();var s=await read(t);requireCurrent(t);render(s);await work(s)}catch(e){if(!t||current(t))status(e.message,true)}finally{busy=false;controls()}}
+async function loadMerged(s,sha){try{var text=await deps.fetchProject(s.token.repo,sha||s.pr.merge_commit_sha||s.pr.base.ref);requireCurrent(s.token);deps.importMerged(text,s.token.repo,s.pr.base.ref);status('PR объединён, проект загружен в редактор.',false,'merged')}catch(e){if(current(s.token))status('PR объединён, но проект не загружен: '+e.message+'. Нажми «Загрузить результат».',true)}}
+async function removeTaskFiles(s){var tasks=s.files.filter(function(f){return /^\.codex\/tasks\/hmi-.*\.md$/.test(f.filename)});for(var i=0;i<tasks.length;i++){var path=tasks[i].filename,encoded=path.split('/').map(encodeURIComponent).join('/'),file=await deps.api('GET','/repos/'+s.token.repo+'/contents/'+encoded+'?ref='+encodeURIComponent(s.pr.head.ref));await deps.api('DELETE','/repos/'+s.token.repo+'/contents/'+encoded,{message:'Remove temporary Codex task file',sha:file.sha,branch:s.pr.head.ref})}}
+function merge(){var shown=snapshot;return action(async function(s){var t=s.token,pr=s.pr;if(!pr)throw new Error('Сначала опубликуй PR из задачи Codex.');if(pr.merged){await loadMerged(s);return}if(shown&&shown.pr&&shown.pr.head.sha!==pr.head.sha)throw new Error('В PR появились новые коммиты. Проверь обновлённое сравнение.');if(pr.state!=='open')throw new Error('PR закрыт без слияния.');if(!s.changes.length)throw new Error('В PR нет изменений проекта.');if(s.waiting)throw new Error('На последнее уточнение ещё нет ответа Codex.');if(pr.mergeable===false)throw new Error('В PR конфликт с основной веткой.');if(pr.draft){var ready=await deps.api('POST','/graphql',{query:'mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}',variables:{id:pr.node_id}});if(ready.errors&&ready.errors.length)throw new Error('Не удалось снять черновик: '+ready.errors.map(function(e){return e.message}).join('; '))}requireCurrent(t);await removeTaskFiles(s);var fresh=await read(t);requireCurrent(t);if(fresh.pr.head.sha===pr.head.sha&&s.files.some(function(f){return /^\.codex\/tasks\/hmi-/.test(f.filename)}))throw new Error('Временный файл задачи не удалён. Обнови PR.');if(JSON.stringify(fresh.comments)!==JSON.stringify(s.comments))throw new Error('Переписка изменилась. Проверь новый ответ.');status('Объединяю PR #'+pr.number+'…',false,'waiting');var merged=await deps.api('PUT','/repos/'+t.repo+'/pulls/'+pr.number+'/merge',{merge_method:'squash',sha:fresh.pr.head.sha});if(!merged.merged)throw new Error(merged.message||'GitHub не выполнил слияние.');s.pr=fresh.pr;s.pr.merged=true;s.pr.state='closed';s.pr.merge_commit_sha=merged.sha;await closeIssue(s);var note=await cleanupBranch(s);await loadMerged(s,merged.sha);if(note&&current(t))status('PR объединён, проект загружен.'+note,false,'merged')})}
+function followup(){return action(async function(s){var text=$('codex-followup-text').value.trim();if(!text)throw new Error('Напиши уточнение');var number=s.token.issue||(s.pr&&s.pr.number);if(!number)throw new Error('Задача не выбрана');if((s.issue&&s.issue.state==='closed')||(s.pr&&s.pr.state==='closed'))throw new Error('Задача уже закрыта. Создай новую.');var suffix=s.pr?'\n\nПродолжай работу в этом PR. Не выполняй обычный git push из контейнера; подготовь обновлённый diff для штатной публикации Codex.':'\n\nПродолжай эту задачу и подготовь обновлённый diff для публикации через Open pull request.';await deps.api('POST','/repos/'+s.token.repo+'/issues/'+number+'/comments',{body:'@codex '+text+suffix+' Ответь по-русски.'});if(current(s.token)){$('codex-followup-text').value='';snapshot=null;status('Уточнение отправлено. Ждём ответа Codex.',false,'waiting');var next=await read(s.token);render(next)}})}
+function activate(){contextChanged();if(active()&&(Number($('codex-edit-issue').value)||Number($('codex-pr').value)))refresh()}
+function init(options){deps=options;$('codex-edit-select').onclick=function(){generation++;snapshot=null;signature='';var selected={repo:deps.context().repo,issue:Number($('codex-edit-issue').value)||0,pr:Number($('codex-pr').value)||0,base:deps.context().branch};save(selected);controls();refresh()};$('codex-edit-issue').onchange=$('codex-edit-select').onclick;$('codex-pr').onchange=$('codex-edit-select').onclick;$('codex-refresh').onclick=refresh;$('codex-merge').onclick=merge;$('codex-followup').onclick=followup;$('codex-compare').onclick=function(){return action(async function(s){if(!s.pr)throw new Error('PR ещё не опубликован.');var text=await deps.fetchProject(s.token.repo,s.pr.head.sha);requireCurrent(s.token);await deps.compare(text)})};$('codex-edit-load').onclick=function(){return action(async function(s){if(!s.pr||!s.pr.merged)throw new Error('PR ещё не объединён.');await loadMerged(s)})};$('codex-edit-open').onclick=function(){try{var t=token(),url=snapshot&&current(snapshot.token)&&(snapshot.pr?snapshot.pr.html_url:snapshot.taskUrl);deps.openExternal(url||'https://github.com/'+t.repo+'/issues/'+(t.issue||t.pr))}catch(e){status(e.message,true)}};$('codex-reject').onclick=function(){return action(async function(s){if(s.pr&&s.pr.merged)throw new Error('PR уже объединён.');if(s.pr&&s.pr.state==='open')await deps.api('PATCH','/repos/'+s.token.repo+'/pulls/'+s.pr.number,{state:'closed'});await closeIssue(s);var note=await cleanupBranch(s);if(current(s.token)){if(s.pr)s.pr.state='closed';if(s.issue)s.issue.state='closed';status((s.pr?'PR и задача закрыты.':'Задача закрыта.')+note,false,'failed')}})};clearInterval(timer);timer=setInterval(function(){if(active()&&!busy&&(Number($('codex-edit-issue').value)||Number($('codex-pr').value)))refresh()},15000);document.addEventListener('visibilitychange',activate);contextChanged();controls()}
+window.CodexEdits={init:init,activate:activate,contextChanged:contextChanged,rememberTask:rememberTask,rememberPr:rememberPr,refresh:refresh,analyze:analyzePr};
 })();

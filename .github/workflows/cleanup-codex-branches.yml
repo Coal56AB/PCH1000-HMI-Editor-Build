@@ -1,0 +1,26 @@
+name: Cleanup Codex branches
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branch:
+    if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'codex/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged or rejected Codex branch
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              await github.rest.git.deleteRef({
+                ...context.repo,
+                ref: `heads/${context.payload.pull_request.head.ref}`
+              });
+            } catch (error) {
+              if (![404, 422].includes(error.status)) throw error;
+            }
