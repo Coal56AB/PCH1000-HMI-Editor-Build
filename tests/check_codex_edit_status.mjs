@@ -49,6 +49,16 @@ function fixture({withAnswer=false,withPr=false,merged=false,taskFile=false,load
 }
 
 {
+  const f=fixture({withPr:true,prFirst:true});
+  f.pr.body='#header-brand\n\nCodex получает задачу в комментарии ниже. Временный файл `.codex/tasks/…` будет удалён приложением перед слиянием.\n\n<!-- pch-codex-edit:abc -->';
+  f.comments[0].body='@codex Исправь вкладки и верни знак вопроса.\n\nРаботай в текущей ветке этого Draft PR. Не создавай другую ветку или PR.\n\n<!-- pch-codex-request:abc -->';
+  await f.app.refresh();
+  const messages=f.$('codex-edit-conversation').children;assert.equal(messages.length,1,'Service-only PR body must be hidden');
+  assert.equal(messages[0].children[1].textContent,'Исправь вкладки и верни знак вопроса.');
+  assert(!messages[0].children[1].textContent.includes('@codex'));assert(!messages[0].children[1].textContent.includes('Draft PR'));
+}
+
+{
   const f=fixture();await f.app.refresh();assert.match(f.$('codex-edit-status').textContent,/ещё работает/);assert.equal(f.$('codex-result-actions').classList.contains('hidden'),true);
   f.comments.push({id:2,user:{login:'chatgpt-codex-connector[bot]'},body:'# Готово\n\n**Diff подготовлен.** https://chatgpt.com/codex/tasks/abc\n<script>bad()</script>'});await f.app.refresh();
   assert.match(f.$('codex-edit-status').textContent,/Codex ответил/);const body=f.$('codex-edit-conversation').children.at(-1).children[1];assert.equal(body.children[0].tagName,'H3');assert(body.textContent.includes('<script>bad()</script>'));
