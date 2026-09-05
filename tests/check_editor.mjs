@@ -7,8 +7,10 @@ const editor = read('app/src/main/assets/editor/editor.js');
 const shell = read('app/src/main/assets/editor/app-shell.js');
 const edits = read('app/src/main/assets/editor/codex-edits.js');
 const markdown = read('app/src/main/assets/editor/codex-markdown.js');
+const cleanup = read('.github/workflows/cleanup-codex-branches.yml');
 if (!html.includes('<script src="codex-markdown.js"></script>') || !html.includes('<script src="codex-edits.js"></script>') || !shell.includes('CodexEdits.init(')) throw new Error('Codex edit modules are not connected');
 if (!markdown.includes('CodexMarkdown') || !edits.includes('CodexMarkdown.render')) throw new Error('Safe Markdown rendering is not connected');
+if (!cleanup.includes("startsWith(github.head_ref, 'codex/')") || !cleanup.includes('deleteRef')) throw new Error('Codex branch cleanup workflow is missing');
 const manifest = read('app/src/main/AndroidManifest.xml');
 
 const requiredIds = [
