@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>ПЧ-1000 HMI Editor</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="app-title"><strong>ПЧ-1000</strong><small id="runtime-state">СИМУЛЯЦИЯ</small></div>
+    <select id="scene" class="hidden-control" aria-label="Служебный сценарий экспорта"></select>
+    <button id="mode-toggle" class="primary mode-toggle">РЕДАКТОР</button>
+    <button id="drawer-toggle" class="edit-only" title="Панель свойств">СВОЙСТВА</button>
+    <button id="undo" class="edit-only" title="Отменить">↶</button>
+    <button id="redo" class="edit-only" title="Повторить">↷</button>
+    <button id="grid" class="edit-only active" title="Привязка к сетке">#</button>
+    <button id="import" title="Импорт проекта">ОТКР.</button>
+    <button id="export">C + JSON</button>
+    <span id="scale-badge" class="scale-badge">×1</span>
+  </header>
+
+  <main>
+    <section class="stage" id="stage">
+      <div class="phone" id="phone">
+        <iframe id="renderer" src="renderer.html?embed=1&amp;live=1" title="Интерактивная симуляция HMI"></iframe>
+        <div id="interaction" class="interaction" aria-label="Редактор холста">
+          <div id="selection" class="selection hidden">
+            <i class="handle nw" data-handle="nw"></i><i class="handle ne" data-handle="ne"></i>
+            <i class="handle sw" data-handle="sw"></i><i class="handle se" data-handle="se"></i>
+            <span id="selection-name"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="properties" id="properties">
+      <div class="property-head">
+        <div><small>ЭЛЕМЕНТ</small><strong id="element-name">Ничего не выбрано</strong></div>
+        <button id="properties-collapse" class="properties-collapse" title="Свернуть свойства">⌄</button>
+        <select id="scope" aria-label="Область изменения">
+          <option value="global">Во всех сценариях</option>
+          <option value="scene">Только в этом сценарии</option>
+        </select>
+      </div>
+
+      <div class="tabs">
+        <button class="active" data-tab="geometry">РАЗМЕР</button>
+        <button data-tab="text">ТЕКСТ</button>
+        <button data-tab="colors">ЦВЕТА</button>
+        <button data-tab="states">СЦЕНАРИИ</button>
+      </div>
+
+      <div class="tab-pane active" data-pane="geometry">
+        <div class="fields four">
+          <label>X<input id="x" type="number" step="1"></label>
+          <label>Y<input id="y" type="number" step="1"></label>
+          <label>ШИР.<input id="width" type="number" min="1" step="1"></label>
+          <label>ВЫС.<input id="height" type="number" min="1" step="1"></label>
+        </div>
+        <div class="fields three">
+          <label>Шаг<select id="snap"><option selected>1</option><option>2</option><option>5</option><option>10</option></select></label>
+          <button id="reset-geometry">СБРОСИТЬ ГЕОМЕТРИЮ</button>
+          <button id="delete-override" class="danger">СБРОСИТЬ ВСЁ</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="text">
+        <label class="wide">Собственный текст<input id="text" type="text" placeholder="Текст элемента"></label>
+        <div class="fields three">
+          <label>Размер<input id="font-size" type="number" min="5" max="40" step="1"></label>
+          <label class="check"><input id="bold" type="checkbox"> Жирный</label>
+          <button id="reset-text">СБРОСИТЬ ТЕКСТ</button>
+        </div>
+        <div class="fields three gap-fields">
+          <label>После символа<input id="gap-after" type="text" maxlength="1" placeholder="/"></label>
+          <label>Зазор, px<input id="gap-px" type="number" min="0" max="32" step="1" value="0"></label>
+          <button id="reset-gap">СБРОСИТЬ ЗАЗОР</button>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="colors">
+        <div class="color-grid">
+          <label>Текст<input id="color" type="color"></label>
+          <label>Фон<input id="background" type="color"></label>
+          <label>Рамка<input id="border" type="color"></label>
+          <label>Линия SVG<input id="stroke" type="color"></label>
+          <label>Заливка SVG<input id="fill" type="color"></label>
+        </div>
+        <button id="reset-colors">СБРОСИТЬ ЦВЕТА</button>
+      </div>
+
+      <div class="tab-pane" data-pane="states">
+        <p>Приложение само определяет текущее состояние интерактивной симуляции. Выбери «Только в этом сценарии», чтобы цвет или текст менялся лишь при таком состоянии.</p>
+        <div id="state-summary" class="state-summary"></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="hardware" id="hardware" aria-label="Внешние органы управления">
+    <div class="drive-buttons">
+      <button id="charge-control">ЗАРЯД / РАЗРЯД</button>
+      <button id="run-control">ПУСК / СТОП</button>
+    </div>
+    <div class="external-encoder">
+      <button id="encoder-minus" aria-label="Энкодер влево">−</button>
+      <button id="encoder-push" class="encoder-push" aria-label="Нажать энкодер"><i></i><strong>ЭНКОДЕР</strong><small>НАЖАТЬ · 1 С — СЛЕДУЮЩИЙ</small></button>
+      <button id="encoder-plus" aria-label="Энкодер вправо">+</button>
+    </div>
+  </section>
+
+  <div id="toast" class="toast"></div>
+  <div id="busy" class="busy hidden"><div class="spinner"></div><strong>Собираю 47 сцен и C-файлы…</strong><small id="busy-state"></small></div>
+  <script src="c-generator.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>
