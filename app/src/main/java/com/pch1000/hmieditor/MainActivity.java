@@ -37,9 +37,12 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        enterFullscreen();
         webView = new WebView(this);
         setContentView(webView);
+        // Some Android builds (including MIUI/HyperOS) do not create DecorView
+        // until content has been attached. Calling Window#getInsetsController()
+        // before that point crashes inside PhoneWindow.
+        webView.post(this::enterFullscreen);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -85,15 +88,19 @@ public final class MainActivity extends Activity {
     }
 
     private void enterFullscreen() {
+        View decorView = getWindow().getDecorView();
+        if (decorView == null) return;
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(false);
-            if (getWindow().getInsetsController() != null) {
-                getWindow().getInsetsController().hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                getWindow().getInsetsController().setSystemBarsBehavior(
+            android.view.WindowInsetsController controller = decorView.getWindowInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(
                     android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         } else {
-            getWindow().getDecorView().setSystemUiVisibility(
+            decorView.setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
