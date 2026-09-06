@@ -36,6 +36,7 @@ final class GitHubService {
     private final WebView webView;
     private final SecureTokenStore tokens;
     private volatile File pendingApk;
+    private volatile boolean apkDownloadActive;
     private final AtomicInteger authGeneration = new AtomicInteger();
     private volatile boolean disposed;
 
@@ -192,6 +193,12 @@ final class GitHubService {
     }
 
     void downloadAndInstall(String url, String suggestedName) {
+        if (apkDownloadActive) {
+            apkDownloadProgress("downloading", 0, -1, "Загрузка уже выполняется");
+            return;
+        }
+        apkDownloadActive = true;
+        apkDownloadProgress("starting", 0, -1, "Подключаюсь к серверу…");
         new Thread(() -> {
             try {
                 if (url == null || !url.startsWith("https://github.com/" + UPDATE_REPO + "/releases/download/")) {
@@ -211,17 +218,37 @@ final class GitHubService {
                 connection.setReadTimeout(45000);
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException("Скачивание APK: HTTP " + status);
+                long totalBytes = connection.getContentLengthLong();
+                long downloadedBytes = 0;
+                long lastReportAt = 0;
+                int lastPercent = -1;
+                apkDownloadProgress("downloading", 0, totalBytes, "Скачиваю APK…");
                 try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(target)) {
                     byte[] buffer = new byte[32768];
                     int read;
-                    while ((read = in.read(buffer)) >= 0) out.write(buffer, 0, read);
+                    while ((read = in.read(buffer)) >= 0) {
+                        out.write(buffer, 0, read);
+                        downloadedBytes += read;
+                        int percent = totalBytes > 0
+                                ? (int) Math.min(100, downloadedBytes * 100 / totalBytes) : -1;
+                        long now = SystemClock.elapsedRealtime();
+                        if (percent != lastPercent && (now - lastReportAt >= 150 || percent == 100)) {
+                            lastPercent = percent;
+                            lastReportAt = now;
+                            apkDownloadProgress("downloading", downloadedBytes, totalBytes, "Скачиваю APK…");
+                        }
+                    }
                 } finally {
                     connection.disconnect();
                 }
                 pendingApk = target;
+                apkDownloadProgress("downloaded", downloadedBytes, totalBytes, "APK скачан. Открываю установку…");
                 activity.runOnUiThread(this::installPendingApk);
             } catch (Exception error) {
+                apkDownloadProgress("error", 0, -1, "Не удалось скачать: " + readableError(error));
                 toast("Не удалось скачать обновление: " + error.getMessage());
+            } finally {
+                apkDownloadActive = false;
             }
         }, "apk-update").start();
     }
@@ -235,6 +262,8 @@ final class GitHubService {
         if (apk == null || !apk.isFile()) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 && !activity.getPackageManager().canRequestPackageInstalls()) {
+            apkDownloadProgress("permission", apk.length(), apk.length(),
+                    "APK скачан. Разреши установку из этого приложения.");
             toast("Разреши установку обновлений для этого приложения");
             Intent permission = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:" + activity.getPackageName()));
@@ -246,8 +275,15 @@ final class GitHubService {
         Intent install = new Intent(Intent.ACTION_VIEW);
         install.setDataAndType(uri, "application/vnd.android.package-archive");
         install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        apkDownloadProgress("installing", apk.length(), apk.length(), "APK скачан. Открываю установку…");
         activity.startActivity(install);
         pendingApk = null;
+    }
+
+    private void apkDownloadProgress(String state, long downloaded, long total, String message) {
+        evaluate("window.AppShell&&window.AppShell.apkDownloadProgress("
+                + JSONObject.quote(state) + "," + downloaded + "," + total + ","
+                + JSONObject.quote(message == null ? "" : message) + ")");
     }
 
     private HttpResult http(String url, String method, String body, String accept,
