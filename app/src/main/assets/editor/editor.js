@@ -12,6 +12,7 @@ var frame=$('#renderer'),phone=$('#phone'),stage=$('#stage'),interaction=$('#int
 var sceneSelect=$('#scene'),scopeSelect=$('#scope');
 var project={format:'pch1000-hmi-editor',version:1,name:'ПЧ-1000 HMI',created:new Date().toISOString(),global:{},scenes:{}};
 var currentScene='home-ready',selectedKey='',selectedEl=null,baselines=new Map(),undo=[],redo=[],gesture=null,loading=false,mode='view',lastRuntimeScene='';
+var view={zoom:1,x:0,y:0},layout={scale:1,pixelScale:1,left:0,top:0},touches=new Map(),touchGesture=null,TAP_SLOP=8;
 var exportBuilding=false,exportPending=false,rendererReloading=false;
 var comparison={before:null,after:null,diff:null,candidate:null,changed:0};
 var STYLE_PROPS=['transform','transform-origin','color','background-color','border-color','stroke','fill','font-size','font-weight'];
@@ -100,21 +101,62 @@ function point(e){var r=interaction.getBoundingClientRect();return{x:(e.clientX-
 function snap(v){if(!$('#grid').classList.contains('active'))return v;var n=Number($('#snap').value)||1;return Math.round(v/n)*n}
 function mutateGeometry(next){var o=currentOverride(true);Object.assign(o,next);applyOverrides();save();updateSelection()}
 
+function distance(a,b){var x=a.x-b.x,y=a.y-b.y;return Math.sqrt(x*x+y*y)}
+function clampView(){
+  var scale=layout.scale*view.zoom,w=320*scale,h=480*scale,sw=stage.clientWidth,sh=stage.clientHeight,left=layout.left+view.x,top=layout.top+view.y,visible=48;
+  if(w<=sw)view.x=0;else view.x=Math.min(sw-visible,Math.max(visible-w,left))-layout.left;
+  if(h<=sh)view.y=0;else view.y=Math.min(sh-visible,Math.max(visible-h,top))-layout.top;
+}
+function applyView(){
+  clampView();phone.style.left=(layout.left+view.x)+'px';phone.style.top=(layout.top+view.y)+'px';phone.style.transform='scale('+(layout.scale*view.zoom)+')';
+  var shown=Math.round(layout.pixelScale*view.zoom*100)/100;$('#scale-badge').textContent='×'+shown;
+}
+function beginPinch(){
+  var pair=Array.from(touches.values()).slice(0,2),a=pair[0],b=pair[1],mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2},sr=stage.getBoundingClientRect(),scale=layout.scale*view.zoom;
+  touchGesture={type:'pinch',distance:Math.max(1,distance(a,b)),zoom:view.zoom,focusX:(mid.x-sr.left-layout.left-view.x)/scale,focusY:(mid.y-sr.top-layout.top-view.y)/scale};gesture=null;
+}
+function continueWithRemainingTouch(){
+  if(touches.size!==1){touchGesture=null;return}var entry=touches.entries().next().value,id=entry[0],p=entry[1];touchGesture={type:'pan',id:id,startX:p.x,startY:p.y,viewX:view.x,viewY:view.y};
+}
+
 interaction.addEventListener('pointerdown',function(e){
+  if(e.pointerType==='touch'){
+    if(loading)return;var tp=point(e),th=e.target.dataset.handle||'';touches.set(e.pointerId,{x:e.clientX,y:e.clientY});interaction.setPointerCapture(e.pointerId);
+    if(touches.size>=2)beginPinch();
+    else if(th&&selectedEl){snapshot();var to=Object.assign({dx:0,dy:0,sx:1,sy:1},currentOverride(true)||{});gesture={id:e.pointerId,start:tp,base:to,rect:internalRect(selectedEl),handle:th,touch:true};touchGesture=null}
+    else touchGesture={type:'pending',id:e.pointerId,startX:e.clientX,startY:e.clientY,viewX:view.x,viewY:view.y};
+    e.preventDefault();return;
+  }
   if(loading)return;var p=point(e),handle=e.target.dataset.handle||'';
   if(!handle){var hit=targetAt(p.x,p.y);selectElement(hit);if(selectedEl)document.body.classList.remove('properties-closed')}if(!selectedEl)return;
   snapshot();var o=Object.assign({dx:0,dy:0,sx:1,sy:1},currentOverride(true)||{}),r=internalRect(selectedEl);
   gesture={id:e.pointerId,start:p,base:o,rect:r,handle:handle};interaction.setPointerCapture(e.pointerId);e.preventDefault();
 });
 interaction.addEventListener('pointermove',function(e){
+  if(e.pointerType==='touch'){
+    if(!touches.has(e.pointerId))return;touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(touchGesture&&touchGesture.type==='pinch'&&touches.size>=2){
+      var pair=Array.from(touches.values()).slice(0,2),a=pair[0],b=pair[1],mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2},sr=stage.getBoundingClientRect();view.zoom=Math.max(1,Math.min(4,touchGesture.zoom*distance(a,b)/touchGesture.distance));var scale=layout.scale*view.zoom;view.x=mid.x-sr.left-layout.left-touchGesture.focusX*scale;view.y=mid.y-sr.top-layout.top-touchGesture.focusY*scale;applyView();e.preventDefault();return;
+    }
+    if(gesture&&gesture.touch&&gesture.id===e.pointerId){var rp=point(e),rdx=rp.x-gesture.start.x,rdy=rp.y-gesture.start.y,rb=gesture.base,rsx=Number(rb.sx)||1,rsy=Number(rb.sy)||1,rnw=Math.max(2,gesture.rect.w+(gesture.handle.indexOf('e')>=0?rdx:-rdx)),rnh=Math.max(2,gesture.rect.h+(gesture.handle.indexOf('s')>=0?rdy:-rdy)),rc={sx:snap(rnw)/Math.max(1,gesture.rect.w)*rsx,sy:snap(rnh)/Math.max(1,gesture.rect.h)*rsy};if(gesture.handle.indexOf('w')>=0)rc.dx=snap((Number(rb.dx)||0)+rdx);if(gesture.handle.indexOf('n')>=0)rc.dy=snap((Number(rb.dy)||0)+rdy);mutateGeometry(rc);e.preventDefault();return}
+    var tg=touchGesture;if(!tg||tg.id!==e.pointerId)return;var mx=e.clientX-tg.startX,my=e.clientY-tg.startY;if(tg.type==='pending'&&Math.sqrt(mx*mx+my*my)>TAP_SLOP)tg.type='pan';if(tg.type==='pan'){view.x=tg.viewX+mx;view.y=tg.viewY+my;applyView()}e.preventDefault();return;
+  }
   if(!gesture||gesture.id!==e.pointerId)return;var p=point(e),dx=p.x-gesture.start.x,dy=p.y-gesture.start.y,b=gesture.base;
   if(!gesture.handle){mutateGeometry({dx:snap((Number(b.dx)||0)+dx),dy:snap((Number(b.dy)||0)+dy)});return}
   var sx=Number(b.sx)||1,sy=Number(b.sy)||1,nw=Math.max(2,gesture.rect.w+(gesture.handle.indexOf('e')>=0?dx:-dx)),nh=Math.max(2,gesture.rect.h+(gesture.handle.indexOf('s')>=0?dy:-dy));
   var change={sx:snap(nw)/Math.max(1,gesture.rect.w)*sx,sy:snap(nh)/Math.max(1,gesture.rect.h)*sy};
   if(gesture.handle.indexOf('w')>=0)change.dx=snap((Number(b.dx)||0)+dx);if(gesture.handle.indexOf('n')>=0)change.dy=snap((Number(b.dy)||0)+dy);mutateGeometry(change);
 });
-interaction.addEventListener('pointerup',function(e){if(gesture&&gesture.id===e.pointerId){gesture=null;save()}});
-interaction.addEventListener('pointercancel',function(){gesture=null});
+interaction.addEventListener('pointerup',function(e){
+  if(e.pointerType==='touch'){
+    var tg=touchGesture,wasTap=tg&&tg.type==='pending'&&tg.id===e.pointerId;touches.delete(e.pointerId);
+    if(gesture&&gesture.touch&&gesture.id===e.pointerId){gesture=null;save()}
+    if(wasTap){var p=point(e);selectElement(targetAt(p.x,p.y));if(selectedEl)document.body.classList.remove('properties-closed')}
+    if(tg&&tg.type==='pinch')continueWithRemainingTouch();else if(!touches.size)touchGesture=null;e.preventDefault();return;
+  }
+  if(gesture&&gesture.id===e.pointerId){gesture=null;save()}
+});
+interaction.addEventListener('pointercancel',function(e){if(e.pointerType==='touch'){touches.delete(e.pointerId);if(touchGesture&&touchGesture.type==='pinch')continueWithRemainingTouch();else if(!touches.size)touchGesture=null;if(gesture&&gesture.touch&&gesture.id===e.pointerId)gesture=null;return}gesture=null});
 
 function cssHex(value){var m=String(value||'').match(/\d+/g);if(!m||m.length<3)return'#000000';return'#'+m.slice(0,3).map(function(n){return Number(n).toString(16).padStart(2,'0')}).join('')}
 function fillPropertyInputs(){
@@ -144,8 +186,7 @@ function fit(){
   var dpr=Math.max(1,window.devicePixelRatio||1),availableW=Math.max(1,Math.floor(stage.clientWidth*dpr)),availableH=Math.max(1,Math.floor(stage.clientHeight*dpr));
   var integerScale=Math.max(1,Math.floor(Math.min(availableW/320,availableH/480))),cssScale=integerScale/dpr;
   var leftPx=Math.floor((availableW-320*integerScale)/2),topPx=Math.floor((availableH-480*integerScale)/2);
-  phone.style.left=(leftPx/dpr)+'px';phone.style.top=(topPx/dpr)+'px';phone.style.transform='scale('+cssScale+')';
-  $('#scale-badge').textContent='×'+integerScale;
+  layout.scale=cssScale;layout.pixelScale=integerScale;layout.left=leftPx/dpr;layout.top=topPx/dpr;applyView();
 }
 function syncRuntimeScene(force){
   if(loading)return;var next=runtimeScene()||'home-ready';$('#runtime-state').textContent=sceneLabel(next).toUpperCase();

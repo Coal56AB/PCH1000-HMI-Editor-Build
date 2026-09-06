@@ -5,10 +5,13 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const editor=fs.readFileSync(new URL('../app/src/main/assets/editor/editor.js',import.meta.url),'utf8');
 const shell=fs.readFileSync(new URL('../app/src/main/assets/editor/app-shell.js',import.meta.url),'utf8');
+const clampView=editor.slice(editor.indexOf('function clampView(){'),editor.indexOf('function applyView(){'));
+const applyView=editor.slice(editor.indexOf('function applyView(){'),editor.indexOf('function beginPinch(){'));
 const fit=editor.slice(editor.indexOf('function fit(){'),editor.indexOf('function syncRuntimeScene('));
 for (const [w,h,dpr] of [[393,627,2.75],[360,572,3],[412,682,2.625],[393,437,2.75]]) {
   const phone={style:{}},badge={};
-  vm.runInNewContext(fit+'fit();',{window:{devicePixelRatio:dpr},stage:{clientWidth:w,clientHeight:h},phone,$:()=>badge});
+  const view={zoom:1,x:0,y:0},layout={scale:1,pixelScale:1,left:0,top:0};
+  vm.runInNewContext(clampView+applyView+fit+'fit();',{window:{devicePixelRatio:dpr},stage:{clientWidth:w,clientHeight:h},phone,$:()=>badge,view,layout,Math});
   const n=Number(badge.textContent.slice(1));
   assert.equal(n,Math.max(1,Math.floor(Math.min(Math.floor(w*dpr)/320,Math.floor(h*dpr)/480))));
   assert(Math.abs(parseFloat(phone.style.left)*dpr + 160*n-Math.floor(w*dpr)/2)<=0.5);
