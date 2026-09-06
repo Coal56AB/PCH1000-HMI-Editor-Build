@@ -49,3 +49,7 @@ body.tour-active .properties{bottom:var(--tour-reserve,180px);max-height:calc(10
 .ai-help code,.ai-help-example{user-select:text;-webkit-user-select:text}
 .shell-pane .ai-help-link{min-height:44px;text-align:left;color:#69b8ed;white-space:normal;overflow-wrap:anywhere}
 .ai-help-example{margin:8px 0;padding:9px;border:1px solid #40535b;border-radius:6px;background:#071014;color:#dce2e4;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 monospace}
+
+.apk-download{display:grid;gap:7px;margin:8px 0;padding:10px;border:1px solid #607279;border-radius:6px;background:#0c181e;color:#dce2e4}
+.apk-download strong{font-size:11px;line-height:15px}.apk-download small{color:#9eacb0;font-size:9px}.apk-download progress{width:100%;height:12px;overflow:hidden;border:1px solid #40535b;border-radius:6px;background:#071014;accent-color:var(--green)}
+.apk-download progress::-webkit-progress-bar{background:#071014}.apk-download progress::-webkit-progress-value{background:var(--green)}.apk-download.error{border-color:#8d4946}.apk-download.error strong{color:#ff918b}
