@@ -178,7 +178,20 @@ async function loadPr(){var s=await CodexEdits.refresh();return s&&s.pr}
 
 function versionParts(value){return String(value||'').replace(/^[^0-9]*/,'').split(/[^0-9]+/).slice(0,3).map(Number)}function newer(a,b){var x=versionParts(a),y=versionParts(b);for(var i=0;i<3;i++){if((x[i]||0)!==(y[i]||0))return(x[i]||0)>(y[i]||0)}return false}
 function publicAppRelease(){return new Promise(function(resolve,reject){var b=bridge();if(!b||!b.checkAppUpdate){reject(new Error('Проверка обновлений доступна в APK'));return}var id=String(requestId++);pending[id]={resolve:resolve,reject:reject};b.checkAppUpdate(id)})}
-async function checkUpdate(silent){try{if(!silent)setMessage('Проверяю GitHub Releases…');var release=await publicAppRelease(),info=parse(bridge().appInfo()),asset=(release.assets||[]).find(function(a){return /\.apk$/i.test(a.name)}),box=$('#update-result');if(!asset)throw new Error('В последнем релизе нет APK');if(!newer(release.tag_name,info.versionName)){box.textContent='Установлена актуальная версия '+info.versionName;if(!silent)setMessage('Обновление не требуется');return}var row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');row.className='shell-status';label.textContent='Доступна '+release.tag_name+(release.name?' · '+release.name:'');button.textContent='СКАЧАТЬ';button.onclick=function(){bridge().downloadAndInstall(asset.browser_download_url,asset.name)};row.appendChild(label);row.appendChild(button);box.textContent='';box.appendChild(row);$('#app-menu').classList.add('active');if(!silent)setMessage('Найдено обновление '+release.tag_name)}catch(e){if(!silent)setMessage(e.message,true)}}
+function formatBytes(value){value=Math.max(0,Number(value)||0);if(value<1048576)return Math.round(value/1024)+' КБ';return(value/1048576).toFixed(1)+' МБ'}
+function apkDownloadProgress(stateName,downloaded,total,statusText){
+  var box=$('#update-result'),card=$('#apk-download-progress');
+  if(!card){card=document.createElement('div');card.id='apk-download-progress';card.className='apk-download';card.innerHTML='<strong></strong><progress max="100"></progress><small></small>';box.textContent='';box.appendChild(card)}
+  var title=card.querySelector('strong'),bar=card.querySelector('progress'),detail=card.querySelector('small'),known=Number(total)>0,percent=known?Math.max(0,Math.min(100,Math.round(Number(downloaded)*100/Number(total)))):-1;
+  card.classList.toggle('error',stateName==='error');title.textContent=statusText||(stateName==='error'?'Ошибка загрузки':'Скачиваю APK…');
+  if(stateName==='starting'||stateName==='downloading'){
+    if(known){bar.value=percent;detail.textContent=percent+'% · '+formatBytes(downloaded)+' из '+formatBytes(total)}else{bar.removeAttribute('value');detail.textContent=downloaded>0?'Скачано '+formatBytes(downloaded):'Ожидание ответа сервера…'}
+    setMessage(known?'Скачивание APK: '+percent+'%':'Скачивание APK…',false);
+  }else{
+    bar.value=stateName==='error'?0:100;detail.textContent=stateName==='error'?'Проверь соединение и попробуй ещё раз':'Загрузка завершена';setMessage(title.textContent,stateName==='error');
+  }
+}
+async function checkUpdate(silent){try{if(!silent)setMessage('Проверяю GitHub Releases…');var release=await publicAppRelease(),info=parse(bridge().appInfo()),asset=(release.assets||[]).find(function(a){return /\.apk$/i.test(a.name)}),box=$('#update-result');if(!asset)throw new Error('В последнем релизе нет APK');if(!newer(release.tag_name,info.versionName)){box.textContent='Установлена актуальная версия '+info.versionName;if(!silent)setMessage('Обновление не требуется');return}var row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');row.className='shell-status';label.textContent='Доступна '+release.tag_name+(release.name?' · '+release.name:'');button.textContent='СКАЧАТЬ';button.onclick=function(){button.disabled=true;button.textContent='СКАЧИВАЮ…';apkDownloadProgress('starting',0,Number(asset.size)||-1,'Подготавливаю загрузку…');bridge().downloadAndInstall(asset.browser_download_url,asset.name)};row.appendChild(label);row.appendChild(button);box.textContent='';box.appendChild(row);$('#app-menu').classList.add('active');if(!silent)setMessage('Найдено обновление '+release.tag_name)}catch(e){if(!silent)setMessage(e.message,true)}}
 function maybeAutoCheckUpdate(){var last=Number(localStorage.getItem('pch-update-check')||0),now=Date.now();if(now-last<86400000)return;localStorage.setItem('pch-update-check',String(now));checkUpdate(true)}
 $('#check-update').onclick=function(){checkUpdate(false)};
 
@@ -226,7 +239,7 @@ document.addEventListener('scroll',positionTour,true);
 if(localStorage.getItem('pch-tour-v1')!=='done')setTimeout(function(){showTour(0)},900);
 function onBack(){if(!$('#tour').classList.contains('hidden')){finishTour();return true}if(!modal.classList.contains('hidden')){close();return true}if(document.body.classList.contains('comparing')){HmiEditor.closeComparison();return true}return false}
 
-window.AppShell={githubAuthProgress:githubAuthProgress,githubResult:githubResult,nativeResult:nativeResult,workingFolderSelected:workingFolderSelected,workingProjectSaved:workingProjectSaved,projectChanged:projectChanged,open:open,onBack:onBack};
+window.AppShell={githubAuthProgress:githubAuthProgress,githubResult:githubResult,nativeResult:nativeResult,apkDownloadProgress:apkDownloadProgress,workingFolderSelected:workingFolderSelected,workingProjectSaved:workingProjectSaved,projectChanged:projectChanged,open:open,onBack:onBack};
 refreshFolder();refreshAuth();
 maybeAutoCheckUpdate();
 })();
