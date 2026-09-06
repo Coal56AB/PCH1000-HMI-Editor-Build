@@ -102,14 +102,37 @@ function snap(v){if(!$('#grid').classList.contains('active'))return v;var n=Numb
 function mutateGeometry(next){var o=currentOverride(true);Object.assign(o,next);applyOverrides();save();updateSelection()}
 
 function distance(a,b){var x=a.x-b.x,y=a.y-b.y;return Math.sqrt(x*x+y*y)}
+function propertiesCoverStage(){
+  if(mode!=='edit'||document.body.classList.contains('properties-closed'))return false;
+  var pr=$('#properties').getBoundingClientRect(),sr=stage.getBoundingClientRect();
+  return pr.top>sr.top&&pr.top<sr.bottom;
+}
 function clampView(){
   var scale=layout.scale*view.zoom,w=320*scale,h=480*scale,sw=stage.clientWidth,sh=stage.clientHeight,left=layout.left+view.x,top=layout.top+view.y,visible=48;
   if(w<=sw)view.x=0;else view.x=Math.min(sw-visible,Math.max(visible-w,left))-layout.left;
-  if(h<=sh)view.y=0;else view.y=Math.min(sh-visible,Math.max(visible-h,top))-layout.top;
+  // An open properties sheet overlays the stage. Even when the whole phone would
+  // otherwise fit, it must remain vertically movable so the selection can be revealed.
+  if(h<=sh&&!propertiesCoverStage())view.y=0;else view.y=Math.min(sh-visible,Math.max(visible-h,top))-layout.top;
 }
 function applyView(){
   clampView();phone.style.left=(layout.left+view.x)+'px';phone.style.top=(layout.top+view.y)+'px';phone.style.transform='scale('+(layout.scale*view.zoom)+')';
   var shown=Math.round(layout.pixelScale*view.zoom*100)/100;$('#scale-badge').textContent='×'+shown;
+}
+function ensureSelectionVisible(){
+  if(!selectedEl||mode!=='edit'||document.body.classList.contains('properties-closed'))return;
+  requestAnimationFrame(function(){
+    var pr=$('#properties').getBoundingClientRect(),sr=stage.getBoundingClientRect(),r=selection.getBoundingClientRect(),margin=14;
+    if(pr.top<=sr.top||pr.top>=sr.bottom)return;
+    var limit=pr.top-margin;
+    if(r.bottom>limit){view.y-=r.bottom-limit;applyView()}
+  });
+}
+function openPropertiesForSelection(){
+  if(!selectedEl)return;
+  document.body.classList.remove('properties-closed');
+  ensureSelectionVisible();
+  // Run once more after the sheet transition reaches its final position.
+  setTimeout(ensureSelectionVisible,210);
 }
 function beginPinch(){
   var pair=Array.from(touches.values()).slice(0,2),a=pair[0],b=pair[1],mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2},sr=stage.getBoundingClientRect(),scale=layout.scale*view.zoom;
@@ -128,7 +151,7 @@ interaction.addEventListener('pointerdown',function(e){
     e.preventDefault();return;
   }
   if(loading)return;var p=point(e),handle=e.target.dataset.handle||'';
-  if(!handle){var hit=targetAt(p.x,p.y);selectElement(hit);if(selectedEl)document.body.classList.remove('properties-closed')}if(!selectedEl)return;
+  if(!handle){var hit=targetAt(p.x,p.y);selectElement(hit);openPropertiesForSelection()}if(!selectedEl)return;
   snapshot();var o=Object.assign({dx:0,dy:0,sx:1,sy:1},currentOverride(true)||{}),r=internalRect(selectedEl);
   gesture={id:e.pointerId,start:p,base:o,rect:r,handle:handle};interaction.setPointerCapture(e.pointerId);e.preventDefault();
 });
@@ -151,7 +174,7 @@ interaction.addEventListener('pointerup',function(e){
   if(e.pointerType==='touch'){
     var tg=touchGesture,wasTap=tg&&tg.type==='pending'&&tg.id===e.pointerId;touches.delete(e.pointerId);
     if(gesture&&gesture.touch&&gesture.id===e.pointerId){gesture=null;save()}
-    if(wasTap){var p=point(e);selectElement(targetAt(p.x,p.y));if(selectedEl)document.body.classList.remove('properties-closed')}
+    if(wasTap){var p=point(e);selectElement(targetAt(p.x,p.y));openPropertiesForSelection()}
     if(tg&&tg.type==='pinch')continueWithRemainingTouch();else if(!touches.size)touchGesture=null;e.preventDefault();return;
   }
   if(gesture&&gesture.id===e.pointerId){gesture=null;save()}
@@ -199,8 +222,9 @@ function setMode(next){
   requestAnimationFrame(fit);
 }
 $('#mode-toggle').onclick=function(){setMode(mode==='edit'?'view':'edit')};
-$('#drawer-toggle').onclick=function(){document.body.classList.toggle('properties-closed');requestAnimationFrame(fit)};
-$('#properties-collapse').onclick=function(){document.body.classList.toggle('properties-closed');requestAnimationFrame(fit)};
+function toggleProperties(){document.body.classList.toggle('properties-closed');requestAnimationFrame(function(){fit();ensureSelectionVisible()});setTimeout(ensureSelectionVisible,210)}
+$('#drawer-toggle').onclick=toggleProperties;
+$('#properties-collapse').onclick=toggleProperties;
 window.addEventListener('resize',fit);if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
 // Layout must not depend on iframe load timing or renderer readiness.
 if(window.ResizeObserver)new ResizeObserver(fit).observe(stage);

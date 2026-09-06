@@ -27,6 +27,7 @@ if (!editor.includes('startComparison')) throw new Error('Render comparison is n
 if (!editor.includes("id==='font-size'||id==='gap-px'")) throw new Error('Safe numeric input handler is missing');
 if (!editor.includes("touchGesture={type:'pending'") || !editor.includes("touchGesture.type==='pinch'") || !editor.includes('TAP_SLOP=8')) throw new Error('Touch pan, pinch zoom and tap-only selection are missing');
 if (!editor.includes('selectElement(targetAt(p.x,p.y))')) throw new Error('Touch selection must happen on pointer release');
+if (!editor.includes('ensureSelectionVisible') || !editor.includes('openPropertiesForSelection')) throw new Error('Selected elements must remain visible above the properties sheet');
 if (!read('app/src/main/assets/editor/editor.css').includes('.editing .interaction{pointer-events:auto;touch-action:none}')) throw new Error('Editor touch surface must own touch gestures');
 if (!shell.includes("@codex ")) throw new Error('Codex PR trigger is missing');
 if (!edits.includes('codex-followup') || !edits.includes('codex-reject')) throw new Error('Codex PR follow-up controls are missing');
@@ -41,5 +42,6 @@ if (!gradle.includes('buildConfig true')) throw new Error('BuildConfig build fix
 if (!editor.includes('new ResizeObserver(fit).observe(stage)')) throw new Error('Stage resize observer missing');
 if (html.includes('id="update-repo"') || shell.includes('state.updateRepo')) throw new Error('APK repo must not be user selectable');
 if (!github.includes('UPDATE_REPO = "Coal56AB/PCH1000-HMI-Editor-Build"')) throw new Error('Wrong APK repository');
+if (!shell.includes('apkDownloadProgress') || !github.includes('apkDownloadProgress("downloading"')) throw new Error('APK download progress reporting is missing');
 if (!manifest.includes('android:icon="@mipmap/ic_launcher"')) throw new Error('Custom launcher icon missing');
 console.log('1.2.1 build, icon and update-source checks: OK');
