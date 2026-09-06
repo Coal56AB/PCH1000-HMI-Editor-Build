@@ -25,6 +25,9 @@ for (const id of requiredIds) {
 if (!editor.includes('},500)')) throw new Error('Encoder hold is not 500 ms');
 if (!editor.includes('startComparison')) throw new Error('Render comparison is not exposed');
 if (!editor.includes("id==='font-size'||id==='gap-px'")) throw new Error('Safe numeric input handler is missing');
+if (!editor.includes("touchGesture={type:'pending'") || !editor.includes("touchGesture.type==='pinch'") || !editor.includes('TAP_SLOP=8')) throw new Error('Touch pan, pinch zoom and tap-only selection are missing');
+if (!editor.includes('selectElement(targetAt(p.x,p.y))')) throw new Error('Touch selection must happen on pointer release');
+if (!read('app/src/main/assets/editor/editor.css').includes('.editing .interaction{pointer-events:auto;touch-action:none}')) throw new Error('Editor touch surface must own touch gestures');
 if (!shell.includes("@codex ")) throw new Error('Codex PR trigger is missing');
 if (!edits.includes('codex-followup') || !edits.includes('codex-reject')) throw new Error('Codex PR follow-up controls are missing');
 if (!manifest.includes('android.permission.INTERNET')) throw new Error('INTERNET permission is missing');
